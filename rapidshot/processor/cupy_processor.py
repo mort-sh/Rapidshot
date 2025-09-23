@@ -5,6 +5,7 @@ from rapidshot.util.logging import get_logger
 import warnings
 import sys
 from rapidshot.processor.base import ProcessorBackends
+from rapidshot.util.ctypes_helpers import pointer_to_address
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -201,7 +202,7 @@ class CupyProcessor:
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e
 
-    def process(self, rect, width, height, region, rotation_angle):
+    def process(self, rect, width, height, region, rotation_angle, output_buffer=None):
         """
         Process a frame using GPU acceleration.
         
@@ -219,64 +220,56 @@ class CupyProcessor:
 
         try:
             if not hasattr(rect, 'pBits') or not rect.pBits:
-                logger.warning(f"Invalid rect or pBits, cannot process. Rect type: {type(rect)}")
-                if output_buffer is not None:
-                    output_buffer.fill(0)
-                return
+                raise ValueError(f"Invalid rect or pBits, cannot process. Rect type: {type(rect)}")
 
-            # Original width and height of the texture from Duplicator
-            # width, height are passed in, representing the full output dimensions
+            pitch = int(rect.Pitch)
+            src_address = pointer_to_address(rect.pBits)
+            if src_address is None:
+                raise ValueError("Mapped rect does not contain a valid pointer")
 
-            if hasattr(rect, 'Pitch'):
-                pitch = int(rect.Pitch)
-            else:
-                logger.debug(f"Rect of type {type(rect)} doesn't have Pitch attribute, estimating based on width")
-                pitch = width * 4 # Assuming BGRA format (4 bytes per pixel)
-
-            buffer_address = ctypes.addressof(rect.pBits.contents)
-            
-            # Create a NumPy array view of the entire source frame buffer from rect.pBits
-            # This view is on CPU memory, pointing to the DDA buffer.
-            source_image_np_view = np.ctypeslib.as_array(
-                (ctypes.c_ubyte * (pitch * height)).from_address(buffer_address)
-            ).reshape((height, pitch // 4, 4)) # height, actual_cols_with_pitch, channels
-
-            # Validate and adjust region coordinates
             left, top, right, bottom = region
-            left = max(0, min(left, width - 1))
-            top = max(0, min(top, height - 1))
-            right = max(left + 1, min(right, width))
-            bottom = max(top + 1, min(bottom, height))
+            if not (0 <= left < right <= width) or not (0 <= top < bottom <= height):
+                raise ValueError(f"Region {region} is outside of the frame dimensions {(width, height)}")
 
             region_height = bottom - top
             region_width = right - left
 
-            if output_buffer.shape[0] != region_height or \
-               output_buffer.shape[1] != region_width or \
-               output_buffer.shape[2] != 4: # Assuming BGRA for now
-                logger.error(
-                    f"Output buffer shape {output_buffer.shape} does not match "
-                    f"region shape ({region_height}, {region_width}, 4)."
-                )
-                output_buffer.fill(0)
-                return
-            
-            # Extract the specified region from the source_image_np_view (this is still a NumPy array/view)
-            # This creates a view, or a copy if slicing is complex, but it's CPU-side.
-            region_np_view = source_image_np_view[top:bottom, left:right, :]
-            
-            # Ensure region_np_view is C-contiguous for CuPy copy if it's not already.
-            # This is important if the slicing above created a non-contiguous view.
-            if not region_np_view.flags['C_CONTIGUOUS']:
-                region_np_view = np.ascontiguousarray(region_np_view)
+            if output_buffer is None:
+                output_buffer = self.cp.empty((region_height, region_width, 4), dtype=self.cp.uint8)
+                is_pooled_buffer = False
+            else:
+                is_pooled_buffer = True
+                if output_buffer.shape[:2] != (region_height, region_width) or output_buffer.shape[2] != 4:
+                    raise ValueError(
+                        f"Output buffer shape {output_buffer.shape} does not match region shape "
+                        f"({region_height}, {region_width}, 4)."
+                    )
 
-            # Copy data from the NumPy region view (CPU) to the CuPy output_buffer (GPU)
-            output_buffer.set(region_np_view)
+            row_bytes = region_width * 4
+            total_pitch_bytes = pitch * region_height
+            src_buffer = (ctypes.c_ubyte * total_pitch_bytes).from_address(src_address + top * pitch)
+            src_view = np.ctypeslib.as_array(src_buffer).reshape(region_height, pitch)
 
-            
+            if pitch == row_bytes and left == 0:
+                cpu_region = src_view[:, :row_bytes]
+            else:
+                start = left * 4
+                end = start + row_bytes
+                cpu_region = np.empty((region_height, row_bytes), dtype=np.uint8)
+                for row in range(region_height):
+                    cpu_region[row, :] = src_view[row, start:end]
+
+            cpu_region = cpu_region.reshape(region_height, region_width, 4)
+
+            if hasattr(output_buffer, "set"):
+                output_buffer.set(cpu_region)
+            else:
+                output_buffer[...] = cpu_region
+
+
             # Phase 2: Color Conversion and Rotation
             current_array = output_buffer # Start with the pooled buffer (already has BGRA data)
-            is_still_pooled_buffer = True
+            is_still_pooled_buffer = is_pooled_buffer
 
             # Color Conversion
             if self.color_mode is not None: # Not 'BGRA', so conversion is intended

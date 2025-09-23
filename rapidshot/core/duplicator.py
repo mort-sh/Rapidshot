@@ -67,6 +67,7 @@ class Duplicator:
     cursor: Cursor = Cursor()
     last_error: str = ""
     cursor_visible: bool = False
+    _frame_acquired: bool = False
 
     def __post_init__(self, output: Output, device: Device) -> None:
         """
@@ -109,7 +110,8 @@ class Duplicator:
         # Reset state for this update attempt
         self.updated = False
         self.last_error = ""
-        
+        self._frame_acquired = False
+
         info = DXGI_OUTDUPL_FRAME_INFO()
         res = ctypes.POINTER(IDXGIResource)()
         frame_acquired = False
@@ -122,6 +124,7 @@ class Duplicator:
                 ctypes.byref(res),
             )
             frame_acquired = True
+            self._frame_acquired = True
             logger.debug("Frame acquired successfully")
             
             # FIX: Handle both LARGE_INTEGER and int types for LastMouseUpdateTime
@@ -154,14 +157,15 @@ class Duplicator:
                 last_present_time = info.LastPresentTime
                 
             # No new frames
-            if last_present_time == 0: 
+            if last_present_time == 0:
                 logger.debug("No new frame content")
                 self.updated = False
                 return True
-       
+
             # Process the frame
             try:
-                self.texture = res.QueryInterface(ID3D11Texture2D)
+                queried_texture = res.QueryInterface(ID3D11Texture2D)
+                self.texture = queried_texture
                 self.updated = True
                 return True
             except comtypes.COMError as ce:
@@ -199,16 +203,8 @@ class Duplicator:
             raise RapidShotError(f"Unhandled Python exception in update_frame: {e}") from e # Wrap in RapidShotError
         
         finally:
-            # Always release the DDA frame if it was acquired by AcquireNextFrame
-            if frame_acquired: # frame_acquired is True only if AcquireNextFrame succeeded
-                try:
-                    self.duplicator.ReleaseFrame()
-                except Exception as e:
-                    logger.warning(f"Failed to release frame: {e}")
-                
-            # If we have a resource pointer but failed to get the texture,
-            # ensure it's properly released
-            if frame_acquired and res and not self.texture:
+            # Release the intermediate IDXGIResource reference created by AcquireNextFrame
+            if frame_acquired and res:
                 try:
                     res.Release()
                 except Exception as e:
@@ -223,24 +219,27 @@ class Duplicator:
             Frame information or None if no update
         """
         if self.update_frame():
-            if not self.updated:
-                return None
-                
-            # Create a simple frame information object with expected attributes
-            class FrameInfo:
-                def __init__(self, rect, width, height, cursor_visible=False):
-                    self.rect = rect
-                    self.width = width
-                    self.height = height
-                    self.cursor_visible = cursor_visible
-                    
-            # Return frame info object with the expected data
-            return FrameInfo(
-                rect=self.texture,  # Use texture directly as rect
-                width=self._output_width,
-                height=self._output_height,
-                cursor_visible=self.cursor_visible
-            )
+            try:
+                if not self.updated:
+                    return None
+
+                # Create a simple frame information object with expected attributes
+                class FrameInfo:
+                    def __init__(self, rect, width, height, cursor_visible=False):
+                        self.rect = rect
+                        self.width = width
+                        self.height = height
+                        self.cursor_visible = cursor_visible
+
+                return FrameInfo(
+                    rect=self.texture,  # Use texture directly as rect
+                    width=self._output_width,
+                    height=self._output_height,
+                    cursor_visible=self.cursor_visible
+                )
+            finally:
+                if self._frame_acquired:
+                    self.release_frame()
         return None
         
     def get_output_dimensions(self):
@@ -266,9 +265,14 @@ class Duplicator:
         Release the current frame.
         """
         # Release frame warning fix applied
+        if not self._frame_acquired:
+            logger.debug("ReleaseFrame called with no active frame")
+            return
+
         if self.duplicator is not None:
             try:
                 self.duplicator.ReleaseFrame()
+                self._frame_acquired = False
                 logger.debug("Frame released")
             except comtypes.COMError as ce:
                 # Don't log as warning for specific known error code
@@ -305,6 +309,7 @@ class Duplicator:
                 self.last_error = error_msg
             finally: # Ensure self.duplicator is set to None even if Release() fails somehow
                 self.duplicator = None
+                self._frame_acquired = False
 
     def get_frame_pointer_shape(self, frame_info) -> Union[Tuple[DXGI_OUTDUPL_POINTER_SHAPE_INFO, bytes, str], Tuple[bool, bool, str]]:
         """

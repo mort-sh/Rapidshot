@@ -142,7 +142,7 @@ class DXGI_MAPPED_RECT(ctypes.Structure):
     """
     DXGI mapped rectangle.
     """
-    _fields_ = [("Pitch", wintypes.INT), ("pBits", ctypes.POINTER(wintypes.FLOAT))]
+    _fields_ = [("Pitch", wintypes.INT), ("pBits", ctypes.c_void_p)]
 
 
 class IDXGIObject(comtypes.IUnknown):

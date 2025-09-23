@@ -1,7 +1,7 @@
 import time
 import ctypes
 from typing import Tuple, Optional, Union, List, Any
-from threading import Thread, Event, Lock
+from threading import Thread, Event, Lock, current_thread
 import comtypes
 import numpy as np
 import logging
@@ -26,6 +26,7 @@ from rapidshot.util.timer import (
     set_periodic_timer,
     wait_for_timer,
     cancel_timer,
+    close_timer,
     INFINITE,
     WAIT_FAILED,
 )
@@ -316,31 +317,35 @@ class ScreenCapture:
         Returns:
             Converted region
         """
-        # Extract region coordinates
         left, top, right, bottom = region
-        
-        # Get surface dimensions
-        width, height = output.surface_size
-        
-        # Convert based on rotation angle
+
+        if rotation_angle != output.rotation_angle:
+            raise AssertionError(
+                f"Rotation mismatch: capture reports {rotation_angle} but output is {output.rotation_angle}"
+            )
+
+        surface_width, surface_height = output.surface_size
+
         if rotation_angle == 0:
-            # No rotation
             return (left, top, right, bottom)
-        elif rotation_angle == 90:
-            # 90-degree rotation (clockwise)
-            # In 90-degree rotation, x becomes y, and y becomes (width - x)
-            return (top, width - right, bottom, width - left)
-        elif rotation_angle == 180:
-            # 180-degree rotation
-            # In 180-degree rotation, x becomes (width - x), and y becomes (height - y)
-            return (width - right, height - bottom, width - left, height - top)
-        elif rotation_angle == 270:
-            # 270-degree rotation (clockwise)
-            # In 270-degree rotation, x becomes (height - y), and y becomes x
-            return (height - bottom, left, height - top, right)
-        else:
-            # Invalid rotation angle
-            raise ValueError(f"Invalid rotation angle: {rotation_angle}. Must be 0, 90, 180, or 270.")
+        if rotation_angle == 90:
+            return (top, surface_width - right, bottom, surface_width - left)
+        if rotation_angle == 180:
+            return (
+                surface_width - right,
+                surface_height - bottom,
+                surface_width - left,
+                surface_height - top,
+            )
+        if rotation_angle == 270:
+            return (
+                surface_height - bottom,
+                left,
+                surface_height - top,
+                right,
+            )
+
+        raise ValueError(f"Invalid rotation angle: {rotation_angle}. Must be 0, 90, 180, or 270.")
 
     def grab(self, region: Optional[Tuple[int, int, int, int]] = None) -> Optional[Union[np.ndarray, Any]]: # Any can be PooledBuffer
         """
@@ -365,17 +370,8 @@ class ScreenCapture:
         if region is None:
             current_region_tuple = self.region
         else:
-            # Validate and potentially update self.region if this new region should be default
-            # For now, just use it as a temporary region for this grab.
-            # _validate_region updates self.region, which might not be desired for one-off grabs.
-            # Create a validated tuple without altering self.region.
-            l, t, r, b = region
-            l = max(0, min(l, self.width - 1))
-            t = max(0, min(t, self.height - 1))
-            r = max(l + 1, min(r, self.width))
-            b = max(t + 1, min(b, self.height))
-            current_region_tuple = (l, t, r, b)
-            
+            current_region_tuple = self._normalize_region(region)
+
         return self._grab(current_region_tuple)
 
     def grab_cursor(self):
@@ -420,31 +416,53 @@ class ScreenCapture:
             True if successful, False otherwise
         """
         if self._duplicator.update_frame():
-            if not self._duplicator.updated:
-                return False
+            frame_needs_release = self._duplicator._frame_acquired
+            mapped_rect = None
+            try:
+                if not self._duplicator.updated:
+                    return False
 
-            _region = self.region_to_memory_region(region, self.rotation_angle, self._output)
-            _width = _region[2] - _region[0]
-            _height = _region[3] - _region[1]
+                _region = self.region_to_memory_region(region, self.rotation_angle, self._output)
+                _width = _region[2] - _region[0]
+                _height = _region[3] - _region[1]
 
-            if self._stagesurf.width != _width or self._stagesurf.height != _height:
-                self._stagesurf.release()
-                self._stagesurf.rebuild(output=self._output, device=self._device, dim=(_width, _height))
+                if self._stagesurf.width != _width or self._stagesurf.height != _height:
+                    self._stagesurf.release()
+                    self._stagesurf.rebuild(output=self._output, device=self._device, dim=(_width, _height))
 
-            # Create a source-specific region object with the transformed coordinates
-            source_region = D3D11_BOX(
-                left=_region[0], top=_region[1], right=_region[2], bottom=_region[3], front=0, back=1
-            )
+                source_region = D3D11_BOX(
+                    left=_region[0],
+                    top=_region[1],
+                    right=_region[2],
+                    bottom=_region[3],
+                    front=0,
+                    back=1,
+                )
 
-            # Copy with region support
-            self._device.im_context.CopySubresourceRegion(
-                self._stagesurf.texture, 0, 0, 0, 0, self._duplicator.texture, 0, ctypes.byref(source_region)
-            )
-            self._duplicator.release_frame()
-            rect = self._stagesurf.map()
-            self._processor.process2(image_ptr, rect, self.shot_w, self.shot_h)
-            self._stagesurf.unmap()
-            return True
+                self._device.im_context.CopySubresourceRegion(
+                    self._stagesurf.texture,
+                    0,
+                    0,
+                    0,
+                    0,
+                    self._duplicator.texture,
+                    0,
+                    ctypes.byref(source_region),
+                )
+
+                if frame_needs_release and self._duplicator._frame_acquired:
+                    self._duplicator.release_frame()
+                    frame_needs_release = False
+
+                mapped_rect = self._stagesurf.map()
+                try:
+                    self._processor.process2(image_ptr, mapped_rect, self.shot_w, self.shot_h)
+                finally:
+                    self._stagesurf.unmap()
+                return True
+            finally:
+                if frame_needs_release and self._duplicator._frame_acquired:
+                    self._duplicator.release_frame()
         else:
             self._on_output_change()
             return False
@@ -452,134 +470,191 @@ class ScreenCapture:
     def _grab(self, region: Optional[Tuple[int, int, int, int]] = None) -> Optional[np.ndarray]:
         """
         Grab a frame with a specific region with improved error handling.
-        
+
         Args:
             region: Region to capture (left, top, right, bottom)
-            
+
         Returns:
             ndarray: Captured frame
         """
         try:
-        Args:
-            region: Validated region tuple (left, top, right, bottom) to capture.
-            
-        Returns:
-            PooledBuffer, NumPy/CuPy array, or None.
-        """
-        # Phase 3 & Phase 2 (re-init integration) _grab modification
-        
-        if self._capture_permanently_failed:
-            # Optional: could raise an exception here to be more explicit to the caller.
-            logger.error(f"Capture is permanently failed: {self._last_capture_error_message}")
-            return None 
-        
-        if self._needs_reinit:
-            if not self._attempt_reinitialization():
-                # Re-initialization attempt failed or max attempts reached
-                logger.error(f"Re-initialization failed, current grab cannot proceed. Permanent failure: {self._capture_permanently_failed}")
-                return None # Current grab fails
-            # If re-initialization succeeded, _needs_reinit is now False.
+            if self._capture_permanently_failed:
+                logger.error(f"Capture is permanently failed: {self._last_capture_error_message}")
+                return None
 
-        if not self._is_initialized or self._duplicator is None:
-            logger.error("Attempted to grab frame but capture resources are not initialized.")
-            self._needs_reinit = True # Flag for next attempt
-            return None
+            if self._needs_reinit:
+                if not self._attempt_reinitialization():
+                    logger.error(
+                        "Re-initialization failed, current grab cannot proceed. "
+                        f"Permanent failure: {self._capture_permanently_failed}"
+                    )
+                    return None
 
-        pooled_buffer_wrapper = None
-        output_array_for_region = None
-        can_use_pool = False
+            if not self._is_initialized or self._duplicator is None:
+                logger.error("Attempted to grab frame but capture resources are not initialized.")
+                self._needs_reinit = True
+                return None
 
-        if self.memory_pool:
-            region_h = region[3] - region[1]
-            region_w = region[2] - region[0]
-            if self.memory_pool.buffer_shape[0] == region_h and \
-               self.memory_pool.buffer_shape[1] == region_w and \
-               self.memory_pool.buffer_shape[2] == 4: # BGRA
-                can_use_pool = True
-        
-        try:
+            pooled_buffer_wrapper = None
+            output_array_for_region = None
+            can_use_pool = False
+
+            if self.memory_pool:
+                region_h = region[3] - region[1]
+                region_w = region[2] - region[0]
+                if (
+                    self.memory_pool.buffer_shape[0] == region_h
+                    and self.memory_pool.buffer_shape[1] == region_w
+                    and self.memory_pool.buffer_shape[2] == 4
+                ):
+                    can_use_pool = True
+
             if can_use_pool:
                 pooled_buffer_wrapper = self.memory_pool.checkout()
                 output_array_for_region = pooled_buffer_wrapper.array
-            else: # Fallback for non-pooled or mismatched region
-                logger.debug(f"Region {region} not matching pool config. Using temporary buffer for this grab.")
+            else:
+                logger.debug(
+                    f"Region {region} not matching pool config. Using temporary buffer for this grab."
+                )
                 temp_region_h = region[3] - region[1]
                 temp_region_w = region[2] - region[0]
-                temp_shape = (temp_region_h, temp_region_w, 4) # BGRA
+                temp_shape = (temp_region_h, temp_region_w, 4)
                 if self.nvidia_gpu:
                     output_array_for_region = cp.empty(temp_shape, dtype=cp.uint8)
                 else:
                     output_array_for_region = np.empty(temp_shape, dtype=np.uint8)
 
-            # Core frame acquisition and processing logic
             try:
-                self._duplicator.update_frame() # This now returns None and raises on error
+                self._duplicator.update_frame()
             except RapidShotReinitError as e:
                 logger.warning(f"DXGI Re-init error during update_frame: {e}. Flagging for re-initialization.")
                 self._needs_reinit = True
-                if pooled_buffer_wrapper: pooled_buffer_wrapper.release()
+                if self._duplicator._frame_acquired:
+                    self._duplicator.release_frame()
+                if pooled_buffer_wrapper:
+                    pooled_buffer_wrapper.release()
                 return None
             except RapidShotDeviceError as e:
                 logger.error(f"DXGI Device error during update_frame: {e}. Flagging for re-initialization.")
-                self._needs_reinit = True # Device errors also trigger re-init attempts
-                if pooled_buffer_wrapper: pooled_buffer_wrapper.release()
+                self._needs_reinit = True
+                if self._duplicator._frame_acquired:
+                    self._duplicator.release_frame()
+                if pooled_buffer_wrapper:
+                    pooled_buffer_wrapper.release()
                 return None
-            except RapidShotDXGIError as e: # Other DXGI errors not requiring re-init
+            except RapidShotDXGIError as e:
                 logger.error(f"DXGI error during update_frame: {e}")
-                if pooled_buffer_wrapper: pooled_buffer_wrapper.release()
+                if self._duplicator._frame_acquired:
+                    self._duplicator.release_frame()
+                if pooled_buffer_wrapper:
+                    pooled_buffer_wrapper.release()
                 return None
-            except RapidShotError as e: # Other RapidShot errors
+            except RapidShotError as e:
                 logger.error(f"RapidShot error during update_frame: {e}")
-                if pooled_buffer_wrapper: pooled_buffer_wrapper.release()
+                if self._duplicator._frame_acquired:
+                    self._duplicator.release_frame()
+                if pooled_buffer_wrapper:
+                    pooled_buffer_wrapper.release()
                 return None
 
-            # Phase 2 of timeout handling: Check duplicator.updated and count timeouts
             if self._duplicator.updated:
-                self._consecutive_timeouts = 0 # Reset on a successful frame update
-            else: # Duplicator.update_frame() succeeded but no new frame (timeout)
+                self._consecutive_timeouts = 0
+            else:
                 self._consecutive_timeouts += 1
                 if self._consecutive_timeouts >= self._timeout_warning_threshold:
                     logger.warning(
                         f"No screen updates received for {self._consecutive_timeouts} consecutive attempts "
                         f"(timeout: {self._duplicator.timeout_ms}ms per attempt). "
-                        f"The screen may be static or not updating frequently."
+                        "The screen may be static or not updating frequently."
                     )
-                    self._consecutive_timeouts = 0 # Reset after warning to avoid log spam
-                
-                if pooled_buffer_wrapper: pooled_buffer_wrapper.release()
-                return None # No new frame
+                    self._consecutive_timeouts = 0
 
-            texture_to_process = self._duplicator.texture
-            
-            final_array, is_pooled_buffer_still_valid = self._processor.process(
-                texture_to_process, self.width, self.height, region, 
-                self.rotation_angle, output_array_for_region
-            )
-            
-            # Duplicator.ReleaseFrame() is called inside Duplicator.update_frame's finally block.
+                if self._duplicator._frame_acquired:
+                    self._duplicator.release_frame()
+
+                if pooled_buffer_wrapper:
+                    pooled_buffer_wrapper.release()
+                return None
+
+            frame_needs_release = self._duplicator._frame_acquired
+            mapped_rect = None
+            try:
+                memory_region = self.region_to_memory_region(region, self.rotation_angle, self._output)
+                region_width = memory_region[2] - memory_region[0]
+                region_height = memory_region[3] - memory_region[1]
+
+                if (
+                    self._stagesurf.width != region_width
+                    or self._stagesurf.height != region_height
+                ):
+                    self._stagesurf.release()
+                    self._stagesurf.rebuild(
+                        output=self._output,
+                        device=self._device,
+                        dim=(region_width, region_height),
+                    )
+
+                source_region = D3D11_BOX(
+                    left=memory_region[0],
+                    top=memory_region[1],
+                    right=memory_region[2],
+                    bottom=memory_region[3],
+                    front=0,
+                    back=1,
+                )
+
+                self._device.im_context.CopySubresourceRegion(
+                    self._stagesurf.texture,
+                    0,
+                    0,
+                    0,
+                    0,
+                    self._duplicator.texture,
+                    0,
+                    ctypes.byref(source_region),
+                )
+
+                if frame_needs_release and self._duplicator._frame_acquired:
+                    self._duplicator.release_frame()
+                    frame_needs_release = False
+
+                mapped_rect = self._stagesurf.map()
+                final_array, is_pooled_buffer_still_valid = self._processor.process(
+                    mapped_rect,
+                    region_width,
+                    region_height,
+                    (0, 0, region_width, region_height),
+                    self.rotation_angle,
+                    output_array_for_region,
+                )
+            finally:
+                if mapped_rect is not None:
+                    self._stagesurf.unmap()
+                if frame_needs_release and self._duplicator._frame_acquired:
+                    self._duplicator.release_frame()
 
             if can_use_pool and pooled_buffer_wrapper:
                 if is_pooled_buffer_still_valid:
                     return pooled_buffer_wrapper
-                else:
-                    pooled_buffer_wrapper.release()
-                    return final_array 
-            else: 
-                return final_array 
+                pooled_buffer_wrapper.release()
+                return final_array
 
-        except PoolExhaustedError: # Catch this if checkout fails
+            return final_array
+
+        except PoolExhaustedError:
             logger.warning("Memory pool exhausted during grab. Consider increasing pool_size_frames.")
             return None
-        except Exception as e: # Catch-all for other unexpected errors during _grab
+        except Exception as e:
             logger.error(f"Unexpected error in _grab: {e}")
             import traceback
+
             logger.error(traceback.format_exc())
-            if pooled_buffer_wrapper: # Ensure buffer is released
+            if 'pooled_buffer_wrapper' in locals() and pooled_buffer_wrapper:
                 try:
                     pooled_buffer_wrapper.release()
                 except Exception as rel_e:
                     logger.error(f"Error releasing buffer during exception handling in _grab: {rel_e}")
-            self._needs_reinit = True # Potentially an error that requires re-init
+            self._needs_reinit = True
             self._last_capture_error_message = f"Unexpected error in _grab: {str(e)}"
             return None
 
@@ -615,13 +690,17 @@ class ScreenCapture:
     ):
         """
         Start capturing frames.
-        
+
         Args:
             region: Region to capture (left, top, right, bottom)
             target_fps: Target frame rate
             video_mode: Whether to operate in video mode
             delay: Delay before starting capture (ms)
         """
+        if self.is_capturing:
+            logger.debug("start() called while capture is already active; ignoring request.")
+            return
+
         if delay != 0:
             time.sleep(delay)
             self._on_output_change()
@@ -650,19 +729,33 @@ class ScreenCapture:
         """
         Stop capturing frames.
         """
-        if hasattr(self, 'is_capturing') and self.is_capturing:
+        if getattr(self, 'is_capturing', False):
             self._stop_capture_event.set() # Use renamed event
-            if hasattr(self, '_capture_thread') and self._capture_thread is not None:
-                self._capture_thread.join(timeout=10) # Wait for thread to finish
-        
+            if getattr(self, '_capture_thread', None) is not None:
+                if current_thread() is not self._capture_thread:
+                    self._capture_thread.join(timeout=10) # Wait for thread to finish
+                self._capture_thread = None
+
         self.is_capturing = False
         self._frame_count = 0
         self._frame_available_event.clear()
         # self._stop_capture_event is already set, clear if restartable, but usually not needed
+
+        if self._timer_handle:
+            try:
+                cancel_timer(self._timer_handle)
+            except Exception as timer_error:
+                logger.warning(f"Failed to cancel timer during stop(): {timer_error}")
+            finally:
+                try:
+                    close_timer(self._timer_handle)
+                except Exception as close_error:
+                    logger.warning(f"Failed to close timer handle during stop(): {close_error}")
+                self._timer_handle = None
         
         # Phase 4/5: Release any remaining buffers in the deque
         if hasattr(self, '_pooled_frames_deque') and self._pooled_frames_deque is not None:
-            with self._capture_lock: 
+            with self._capture_lock:
                 # Iterating and releasing like this is safer if deque operations are complex inside loop
                 temp_deque_copy = list(self._pooled_frames_deque) # Copy pointers/references
                 self._pooled_frames_deque.clear() # Clear original deque
@@ -671,6 +764,7 @@ class ScreenCapture:
                         buffer_wrapper.release()
                     except Exception as e:
                         logger.warning(f"Error releasing buffer from deque during stop: {e}")
+            self._pooled_frames_deque = None
         
     def get_latest_frame(self, as_numpy: bool = True):
         """
@@ -817,8 +911,16 @@ class ScreenCapture:
                 
         # Clean up timer
         if self._timer_handle:
-            cancel_timer(self._timer_handle)
-            self._timer_handle = None
+            try:
+                cancel_timer(self._timer_handle)
+            except Exception as timer_error:
+                logger.warning(f"Failed to cancel capture timer: {timer_error}")
+            finally:
+                try:
+                    close_timer(self._timer_handle)
+                except Exception as close_error:
+                    logger.warning(f"Failed to close capture timer handle: {close_error}")
+                self._timer_handle = None
         
         if capture_error is not None or self._capture_permanently_failed:
             logger.error(f"Capture thread terminated. Error: {capture_error}. Permanent failure: {self._capture_permanently_failed}. Last message: {self._last_capture_error_message}")
@@ -858,42 +960,53 @@ class ScreenCapture:
             self.__full = False
             self.__has_frame = False  # Reset frame status
 
+    def _normalize_region(self, region: Tuple[int, int, int, int]) -> Tuple[int, int, int, int]:
+        """Validate *region* without mutating capture state."""
+        if region is None:
+            raise ValueError("Region cannot be None")
+
+        if not hasattr(self, 'width') or not hasattr(self, 'height'):
+            raise ValueError("Capture dimensions are not initialized")
+
+        try:
+            l, t, r, b = map(int, region)
+        except (TypeError, ValueError) as conversion_error:
+            raise ValueError(f"Region must be a tuple of four integers: {conversion_error}") from conversion_error
+
+        if l < 0 or t < 0:
+            raise ValueError(f"Region start ({l}, {t}) is outside the capture bounds (0, 0)")
+
+        if r > self.width or b > self.height:
+            raise ValueError(
+                f"Region end ({r}, {b}) exceeds capture bounds ({self.width}, {self.height})"
+            )
+
+        if l >= r or t >= b:
+            raise ValueError(f"Region coordinates must form a positive area, got {region}")
+
+        return (l, t, r, b)
+
     def _validate_region(self, region: Tuple[int, int, int, int]):
         """
         Validate region coordinates.
-        
+
         Args:
             region: Region to validate (left, top, right, bottom)
-            
+
         Raises:
             ValueError: If region is invalid
         """
-        try:
-            l, t, r, b = region
-            # Apply bounds checking
-            l = max(0, min(l, self.width - 1))
-            t = max(0, min(t, self.height - 1))
-            r = max(l + 1, min(r, self.width))
-            b = max(t + 1, min(b, self.height))
-            
-            # Update region with validated values
-            region = (l, t, r, b)
-            
-            self.region = region
-            
-            # Update the source region with the new coordinates
-            if hasattr(self, '_sourceRegion') and self._sourceRegion is not None:
-                self._sourceRegion.left = region[0]
-                self._sourceRegion.top = region[1]
-                self._sourceRegion.right = region[2]
-                self._sourceRegion.bottom = region[3]
-            self.shot_w, self.shot_h = region[2]-region[0], region[3]-region[1]
-        except Exception as e:
-            # If validation fails, use safe default
-            logger.error(f"Region validation error: {e}")
-            if hasattr(self, 'width') and hasattr(self, 'height'):
-                self.region = (0, 0, self.width, self.height)
-                self.shot_w, self.shot_h = self.width, self.height
+        validated_region = self._normalize_region(region)
+        l, t, r, b = validated_region
+        self.region = validated_region
+
+        if hasattr(self, '_sourceRegion') and self._sourceRegion is not None:
+            self._sourceRegion.left = l
+            self._sourceRegion.top = t
+            self._sourceRegion.right = r
+            self._sourceRegion.bottom = b
+
+        self.shot_w, self.shot_h = r - l, b - t
 
     def release(self):
         """
