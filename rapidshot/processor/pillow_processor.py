@@ -1,6 +1,7 @@
 import ctypes
 from PIL import Image
 from rapidshot.processor.base import ProcessorBackends
+from rapidshot.util.ctypes_helpers import pointer_to_address
 
 
 class PillowProcessor:
@@ -27,7 +28,7 @@ class PillowProcessor:
         else:
             self.pil_mode = color_mode
 
-    def process(self, rect, width, height, region, rotation_angle):
+    def process(self, rect, width, height, region, rotation_angle, output_buffer=None):
         """
         Process a frame.
         
@@ -42,15 +43,21 @@ class PillowProcessor:
             Processed frame as numpy array
         """
         pitch = int(rect.Pitch)
+        row_bytes = width * 4
+        src_address = pointer_to_address(rect.pBits)
+        if src_address is None:
+            raise ValueError("Mapped rect does not contain a valid pointer")
 
-        # Calculate buffer size based on rotation
-        if rotation_angle in (0, 180):
-            size = pitch * height
+        if pitch == row_bytes:
+            buffer = ctypes.string_at(src_address, row_bytes * height)
         else:
-            size = pitch * width
+            contiguous = bytearray(row_bytes * height)
+            for row in range(height):
+                row_bytes_data = ctypes.string_at(src_address + row * pitch, row_bytes)
+                start = row * row_bytes
+                contiguous[start:start + row_bytes] = row_bytes_data
+            buffer = bytes(contiguous)
 
-        # Get raw buffer data
-        buffer = ctypes.string_at(rect.pBits, size)
         pitch //= 4
         
         # Create PIL image with appropriate dimensions

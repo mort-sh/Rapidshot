@@ -37,3 +37,9 @@ def set_periodic_timer(handle, period: int):
 
 wait_for_timer = __kernel32.WaitForSingleObject
 cancel_timer = __kernel32.CancelWaitableTimer
+
+
+def close_timer(handle):
+    if handle and __kernel32.CloseHandle(handle) == 0:
+        raise ctypes.WinError()
+    return True

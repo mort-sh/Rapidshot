@@ -4,12 +4,31 @@ from rapidshot.util.logging import get_logger
 import platform
 import sys
 from typing import Optional, Tuple, Dict, Any
-from rapidshot.capture import ScreenCapture  # Updated import: now from rapidshot.capture
-from rapidshot.core import Output, Device
-from rapidshot.util.io import (
-    enum_dxgi_adapters,
-    get_output_metadata,
-)
+# Screen capture relies on Windows-specific COM technology. Attempt to import it lazily so
+# that other modules (e.g., memory pools) remain usable on non-Windows platforms.
+try:
+    from rapidshot.capture import ScreenCapture  # Updated import: now from rapidshot.capture
+    _capture_import_error = None
+except ImportError as exc:
+    ScreenCapture = None
+    _capture_import_error = exc
+# DXGI device discovery also relies on COM, so guard those imports as well.
+try:
+    from rapidshot.core import Output, Device
+    _core_import_error = None
+except ImportError as exc:
+    Output = Device = None
+    _core_import_error = exc
+
+try:
+    from rapidshot.util.io import (
+        enum_dxgi_adapters,
+        get_output_metadata,
+    )
+    _io_import_error = None
+except ImportError as exc:
+    enum_dxgi_adapters = get_output_metadata = None
+    _io_import_error = exc
 from rapidshot.util.logging import setup_logging, get_logger
 
 # Initialize logging
@@ -63,6 +82,10 @@ class RapidshotFactory(metaclass=Singleton):
         Initialize the factory by enumerating all available devices and outputs.
         """
         logger.info("Initializing RapidshotFactory")
+        if _core_import_error is not None or _io_import_error is not None:
+            raise RapidshotError(
+                "DXGI device enumeration is not available on this platform."
+            ) from (_core_import_error or _io_import_error)
         try:
             p_adapters = enum_dxgi_adapters()
             if not p_adapters:
@@ -106,7 +129,7 @@ class RapidshotFactory(metaclass=Singleton):
     ):
         """
         Create a ScreenCapture instance.
-        
+
         Args:
             device_idx: Device index
             output_idx: Output index (None for primary)
@@ -115,10 +138,14 @@ class RapidshotFactory(metaclass=Singleton):
             nvidia_gpu: Whether to use NVIDIA GPU acceleration
             max_buffer_len: Maximum buffer length for capture
             prefer_integrated: If True, will search for an integrated GPU (e.g., Intel) and select it.
-            
+
         Returns:
             ScreenCapture instance
         """
+        if ScreenCapture is None:
+            raise RapidshotError(
+                "ScreenCapture is not available on this platform."
+            ) from _capture_import_error
         logger.debug(f"Creating ScreenCapture with device_idx={device_idx}, output_idx={output_idx}, nvidia_gpu={nvidia_gpu}, prefer_integrated={prefer_integrated}")
         
         # If the user prefers an integrated GPU, try to find one automatically.
@@ -404,12 +431,3 @@ __version__ = "1.1.0"
 __author__ = "Rapidshot Contributors"
 __description__ = "High-performance screencapture library for Windows using Desktop Duplication API"
 
-# Expose key classes
-from rapidshot.capture import ScreenCapture  # Updated import
-
-# Initialize factory on first import - lazy initialization
-try:
-    get_factory()
-except Exception as e:
-    logger.error(f"Failed to initialize RapidshotFactory on import: {e}")
-    # Let the user handle the initialization error when they try to use the library

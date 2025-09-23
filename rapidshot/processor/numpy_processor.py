@@ -3,8 +3,8 @@ import numpy as np
 import logging
 from rapidshot.util.logging import get_logger
 from numpy import rot90, ndarray, newaxis, uint8
-from numpy.ctypeslib import as_array
 from rapidshot.processor.base import ProcessorBackends
+from rapidshot.util.ctypes_helpers import pointer_to_address
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -136,12 +136,27 @@ class NumpyProcessor:
             height: Height
         """
         try:
-            # Direct memory copy for maximum performance
-            ctypes.memmove(image_ptr, rect.pBits, height * width * 4)
+            pitch = int(rect.Pitch)
+            row_bytes = width * 4
+            src_address = pointer_to_address(rect.pBits)
+            dst_address = pointer_to_address(image_ptr)
+
+            if src_address is None or dst_address is None:
+                raise ValueError("Invalid source or destination pointer for shot copy")
+
+            if pitch == row_bytes:
+                ctypes.memmove(dst_address, src_address, row_bytes * height)
+            else:
+                for row in range(height):
+                    ctypes.memmove(
+                        dst_address + row * row_bytes,
+                        src_address + row * pitch,
+                        row_bytes,
+                    )
         except Exception as e:
             logger.error(f"Memory copy error: {e}")
 
-    def process(self, rect, width, height, region, rotation_angle):
+    def process(self, rect, width, height, region, rotation_angle, output_buffer=None):
         """
         Process a frame with robust error handling.
         
@@ -156,81 +171,50 @@ class NumpyProcessor:
         # Phase 1: Get data into the output buffer (no rotation, no color conversion yet)
         try:
             if not hasattr(rect, 'pBits') or not rect.pBits:
-                logger.warning(f"Invalid rect or pBits, cannot process. Rect type: {type(rect)}")
-                # Optionally fill output_buffer with zeros or handle error
-                if output_buffer is not None:
-                    output_buffer.fill(0)
-                return
+                raise ValueError(f"Invalid rect or pBits, cannot process. Rect type: {type(rect)}")
 
-            # Original width and height of the texture from Duplicator
-            # width, height are passed in, representing the full output dimensions
+            pitch = int(rect.Pitch)
+            src_address = pointer_to_address(rect.pBits)
+            if src_address is None:
+                raise ValueError("Mapped rect does not contain a valid pointer")
 
-            # Determine pitch
-            if hasattr(rect, 'Pitch'):
-                pitch = int(rect.Pitch)
+            region_left, region_top, region_right, region_bottom = region
+            if not (0 <= region_left < region_right <= width) or not (0 <= region_top < region_bottom <= height):
+                raise ValueError(f"Region {region} is outside of the frame dimensions {(width, height)}")
+
+            region_height = region_bottom - region_top
+            region_width = region_right - region_left
+
+            if output_buffer is None:
+                output_buffer = np.empty((region_height, region_width, 4), dtype=np.uint8)
+                is_pooled_buffer = False
             else:
-                logger.debug(f"Rect of type {type(rect)} doesn't have Pitch attribute, estimating based on width")
-                pitch = width * 4 # Assuming BGRA format (4 bytes per pixel)
+                is_pooled_buffer = True
+                if output_buffer.shape[:2] != (region_height, region_width) or output_buffer.shape[2] != 4:
+                    raise ValueError(
+                        f"Output buffer shape {output_buffer.shape} does not match region shape "
+                        f"({region_height}, {region_width}, 4)."
+                    )
 
-            # Create a NumPy array view of the entire source frame buffer from rect.pBits
-            # The total size of the buffer pointed by pBits can be estimated by pitch * height
-            # However, rect.pBits is a POINTER(BYTE), so we need its value (address)
-            buffer_address = ctypes.addressof(rect.pBits.contents)
-            
-            # Full source image view (this is the entire screen buffer from Duplicator)
-            # Assuming BGRA format (4 channels)
-            source_image_view = np.ctypeslib.as_array(
-                (ctypes.c_ubyte * (pitch * height)).from_address(buffer_address)
-            ).reshape((height, pitch // 4, 4)) # height, actual_cols_with_pitch, channels
+            row_bytes = region_width * 4
+            total_pitch_bytes = pitch * region_height
+            src_buffer = (ctypes.c_ubyte * total_pitch_bytes).from_address(src_address + region_top * pitch)
+            src_view = np.ctypeslib.as_array(src_buffer).reshape(region_height, pitch)
 
-            # Validate and adjust region coordinates against the source dimensions (width, height)
-            # region is (left, top, right, bottom)
-            left, top, right, bottom = region
-            left = max(0, min(left, width - 1))
-            top = max(0, min(top, height - 1))
-            right = max(left + 1, min(right, width))
-            bottom = max(top + 1, min(bottom, height))
+            dest_view = output_buffer.view(np.uint8).reshape(region_height, region_width * 4)
 
-            # Extract the specified region from the source_image_view
-            # We need to consider the pitch. The actual width of data per row is pitch // 4.
-            # The 'width' parameter is the logical width of the screen.
-            # Cropping should be done based on logical coordinates (left, top, right, bottom)
-            # then copied to output_buffer which should match the region's shape.
-            
-            region_height = bottom - top
-            region_width = right - left
+            if pitch == row_bytes and region_left == 0:
+                dest_view[:] = src_view[:, :row_bytes]
+            else:
+                start = region_left * 4
+                end = start + row_bytes
+                for row in range(region_height):
+                    dest_view[row, :] = src_view[row, start:end]
 
-            if output_buffer.shape[0] != region_height or \
-               output_buffer.shape[1] != region_width or \
-               output_buffer.shape[2] != 4: # Assuming BGRA for now
-                logger.error(
-                    f"Output buffer shape {output_buffer.shape} does not match "
-                    f"region shape ({region_height}, {region_width}, 4)."
-                )
-                # Handle error: fill with zeros or raise
-                output_buffer.fill(0)
-                return
 
-            # Copy the region from source_image_view to output_buffer
-            # source_image_view is (height, pitch // 4, 4)
-            # output_buffer is (region_height, region_width, 4)
-            
-            # If pitch // 4 == width (i.e., no padding in rows), this is simpler:
-            # output_buffer[:, :, :] = source_image_view[top:bottom, left:right, :]
-            # If there is padding (pitch // 4 > width), we must copy row by row or use striding tricks.
-            # For simplicity and correctness with pitch:
-            for i in range(region_height):
-                # Source row index: top + i
-                # Source columns: from left to right
-                # Destination row index: i
-                # Destination columns: all
-                row_data = source_image_view[top + i, left:right, :]
-                output_buffer[i, :, :] = row_data
-            
-            
             # Phase 2: Color Conversion and Rotation
             current_array = output_buffer # Start with the pooled buffer
-            is_still_pooled_buffer = True
+            is_still_pooled_buffer = is_pooled_buffer
 
             # Color Conversion
             # self.color_mode is None if original was 'BGRA' and no conversion is needed.

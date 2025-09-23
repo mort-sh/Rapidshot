@@ -83,7 +83,7 @@ class Processor:
         except ImportError:
             pass
 
-    def process(self, rect, width, height, region, rotation_angle):
+    def process(self, rect, width, height, region, rotation_angle, output_buffer: Optional[Any] = None):
         """
         Process a frame.
         
@@ -97,7 +97,7 @@ class Processor:
         Returns:
             Processed frame
         """
-        return self.backend.process(rect, width, height, region, rotation_angle)
+        return self.backend.process(rect, width, height, region, rotation_angle, output_buffer)
     
     def process2(self, image_ptr, rect, width, height):
         """
