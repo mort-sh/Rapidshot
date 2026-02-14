@@ -6,7 +6,12 @@ import comtypes
 import numpy as np
 import logging
 from rapidshot.util.logging import get_logger
-from rapidshot.memory_pool import NumpyMemoryPool, CupyMemoryPool, PoolExhaustedError
+from rapidshot.memory_pool import (
+    NumpyMemoryPool,
+    CupyMemoryPool,
+    PoolExhaustedError,
+    PooledBuffer,
+)
 from rapidshot.util.errors import ( # Added for Phase 2
     RapidShotError,
     RapidShotDXGIError,
@@ -92,6 +97,8 @@ class ScreenCapture:
         self._buffer_lock = Lock() 
         self.cursor = False
         self.memory_pool = None 
+        self._output = output
+        self._device = device
         
         # Phase 2: Re-initialization state variables
         self._is_initialized = False
@@ -220,6 +227,18 @@ class ScreenCapture:
             self.rotation_angle = self._output.rotation_angle
             self.output_color = output_color 
 
+            # If continuous capture was running, clear frame deque before pool reset.
+            # The deque can contain pooled buffers tied to the current pool.
+            if self.is_capturing and self.continuous_mode:
+                if self._pooled_frames_deque is not None:
+                    logger.debug("Clearing continuous mode frame deque due to re-initialization.")
+                    with self._capture_lock:
+                        while self._pooled_frames_deque:
+                            frame_entry = self._pooled_frames_deque.popleft()
+                            self._release_frame_entry(frame_entry)
+                    self._pooled_frames_deque = collections.deque(maxlen=self.max_buffer_len)
+                self._frame_available_event.clear()
+
             # Re-initialize Memory Pool
             if self.memory_pool: # Destroy existing pool before creating a new one
                 logger.debug("Destroying existing memory pool before re-initialization.")
@@ -235,19 +254,6 @@ class ScreenCapture:
                 self.memory_pool = CupyMemoryPool(buffer_shape, dtype, pool_size_frames)
             else:
                 self.memory_pool = NumpyMemoryPool(buffer_shape, dtype, pool_size_frames)
-            
-            # If continuous capture was running, its buffer needs to be reset
-            if self.is_capturing and self.continuous_mode:
-                if self._pooled_frames_deque is not None:
-                    logger.debug("Clearing continuous mode frame deque due to re-initialization.")
-                    # Buffers should be released by memory_pool.destroy_pool if they were checked out.
-                    # If they are still in the deque, they need explicit release.
-                    with self._capture_lock:
-                        while self._pooled_frames_deque:
-                            buf_wrapper = self._pooled_frames_deque.popleft()
-                            buf_wrapper.release() # Ensure they are returned to the (old) pool before it's gone
-                    self._pooled_frames_deque = collections.deque(maxlen=self.max_buffer_len)
-                self._frame_available_event.clear()
 
 
             self._is_initialized = True
@@ -725,6 +731,55 @@ class ScreenCapture:
         self._capture_thread.daemon = True
         self._capture_thread.start()
 
+    def _release_frame_entry(self, frame_entry: Any) -> None:
+        """Release pooled frame entries, no-op for plain arrays."""
+        if isinstance(frame_entry, PooledBuffer):
+            frame_entry.release()
+
+    def _frame_entry_to_array(self, frame_entry: Any) -> Any:
+        """Extract array payload from a queued frame entry."""
+        if isinstance(frame_entry, PooledBuffer):
+            return frame_entry.array
+        return frame_entry
+
+    def _append_frame_entry(self, frame_entry: Any) -> None:
+        """Append frame entries into the continuous queue with bounded eviction."""
+        with self._capture_lock:
+            if self._pooled_frames_deque is None:
+                return
+            if len(self._pooled_frames_deque) == self.max_buffer_len:
+                oldest_frame_entry = self._pooled_frames_deque.popleft()
+                self._release_frame_entry(oldest_frame_entry)
+            self._pooled_frames_deque.append(frame_entry)
+        self._frame_available_event.set()
+
+    def _duplicate_frame_entry(self, frame_entry: Any) -> Optional[Any]:
+        """Create a duplicate frame entry for video_mode when no fresh frame is available."""
+        if frame_entry is None:
+            return None
+
+        if isinstance(frame_entry, PooledBuffer):
+            if not self.memory_pool:
+                logger.warning("Video_mode: Memory pool not available for duplicating pooled frame.")
+                return None
+
+            duplicated_pooled_frame = self.memory_pool.checkout()
+            source_array = frame_entry.array
+            if CUPY_AVAILABLE and isinstance(source_array, cp.ndarray):
+                duplicated_pooled_frame.array[:] = source_array
+            else:
+                np.copyto(duplicated_pooled_frame.array, source_array)
+            return duplicated_pooled_frame
+
+        source_array = self._frame_entry_to_array(frame_entry)
+        if CUPY_AVAILABLE and isinstance(source_array, cp.ndarray):
+            return source_array.copy()
+        if isinstance(source_array, np.ndarray):
+            return np.copy(source_array)
+
+        logger.warning(f"Video_mode: Unsupported frame entry type for duplication: {type(frame_entry)}")
+        return None
+
     def stop(self):
         """
         Stop capturing frames.
@@ -759,11 +814,11 @@ class ScreenCapture:
                 # Iterating and releasing like this is safer if deque operations are complex inside loop
                 temp_deque_copy = list(self._pooled_frames_deque) # Copy pointers/references
                 self._pooled_frames_deque.clear() # Clear original deque
-                for buffer_wrapper in temp_deque_copy:
+                for frame_entry in temp_deque_copy:
                     try:
-                        buffer_wrapper.release()
+                        self._release_frame_entry(frame_entry)
                     except Exception as e:
-                        logger.warning(f"Error releasing buffer from deque during stop: {e}")
+                        logger.warning(f"Error releasing frame entry from deque during stop: {e}")
             self._pooled_frames_deque = None
         
     def get_latest_frame(self, as_numpy: bool = True):
@@ -787,16 +842,16 @@ class ScreenCapture:
                 self._frame_available_event.clear() # Clear if deque is empty after wait
                 return None
             
-            # Get the most recent PooledBuffer wrapper (without removing it)
-            latest_pooled_buffer = self._pooled_frames_deque[-1]
-            frame_array = latest_pooled_buffer.array
+            # Get the most recent frame entry (without removing it)
+            latest_frame_entry = self._pooled_frames_deque[-1]
+            frame_array = self._frame_entry_to_array(latest_frame_entry)
             
             # self._frame_available_event.clear() # Do not clear here, new frames might arrive.
             # Event should be cleared only if no frames are in buffer after waiting.
             # Or, it's a signal that *at least one* frame is ready.
 
         # Convert to numpy if requested and if data is on GPU
-        if self.nvidia_gpu and CUPY_AVAILABLE and isinstance(frame_array, cp.ndarray):
+        if CUPY_AVAILABLE and isinstance(frame_array, cp.ndarray):
             if as_numpy:
                 return cp.asnumpy(frame_array)
             else:
@@ -828,7 +883,7 @@ class ScreenCapture:
 
         self._capture_start_time = time.perf_counter()
         capture_error = None
-        last_successful_pooled_buffer = None # For video_mode duplication
+        last_successful_frame_entry = None # For video_mode duplication
 
         while not self._stop_capture_event.is_set():
             if self._timer_handle:
@@ -852,16 +907,12 @@ class ScreenCapture:
 
                 if grab_result is not None:
                     self._frame_count += 1
-                    if isinstance(grab_result, PooledBuffer): 
-                        with self._capture_lock:
-                            if len(self._pooled_frames_deque) == self.max_buffer_len:
-                                oldest_buffer = self._pooled_frames_deque[0] 
-                                oldest_buffer.release()
-                            self._pooled_frames_deque.append(grab_result)
-                            last_successful_pooled_buffer = grab_result 
-                        self._frame_available_event.set()
-                    else: 
-                        logger.warning("Continuous mode: Frame processed but not pool-compatible, cannot add to deque.")
+                    self._append_frame_entry(grab_result)
+                    last_successful_frame_entry = grab_result
+                    if not isinstance(grab_result, PooledBuffer):
+                        logger.debug(
+                            "Continuous mode: Enqueued non-pooled frame entry due to color conversion/shape change."
+                        )
                 
                 elif self._needs_reinit: # _grab returned None and might have set _needs_reinit
                     logger.info("Continuous mode: Grab failed, re-initialization pending or in progress.")
@@ -869,33 +920,19 @@ class ScreenCapture:
                     time.sleep(0.1) # Avoid tight loop if _grab keeps failing due to re-init
                     continue # Try again, _grab will attempt re-init
 
-                elif video_mode and last_successful_pooled_buffer:
-                    new_pooled_buffer_for_duplicate = None
+                elif video_mode and last_successful_frame_entry is not None:
+                    duplicated_frame_entry = None
                     try:
-                        if self.memory_pool: # Ensure pool exists
-                            new_pooled_buffer_for_duplicate = self.memory_pool.checkout()
-                            if self.nvidia_gpu: # cp array
-                                new_pooled_buffer_for_duplicate.array[:] = last_successful_pooled_buffer.array 
-                            else: # np array
-                                np.copyto(new_pooled_buffer_for_duplicate.array, last_successful_pooled_buffer.array)
-                            
-                            with self._capture_lock:
-                                if len(self._pooled_frames_deque) == self.max_buffer_len:
-                                    oldest_buffer = self._pooled_frames_deque[0]
-                                    oldest_buffer.release()
-                                self._pooled_frames_deque.append(new_pooled_buffer_for_duplicate)
-                            self._frame_available_event.set()
+                        duplicated_frame_entry = self._duplicate_frame_entry(last_successful_frame_entry)
+                        if duplicated_frame_entry is not None:
+                            self._append_frame_entry(duplicated_frame_entry)
                             self._frame_count += 1
-                        else:
-                            logger.warning("Video_mode: Memory pool not available for duplicating frame.")
                     except PoolExhaustedError:
                         logger.warning("Video_mode: Pool exhausted, cannot duplicate frame.")
-                        if new_pooled_buffer_for_duplicate: 
-                            new_pooled_buffer_for_duplicate.release()
                     except Exception as dup_e:
                         logger.error(f"Video_mode: Error duplicating frame: {dup_e}")
-                        if new_pooled_buffer_for_duplicate:
-                            new_pooled_buffer_for_duplicate.release()
+                        if isinstance(duplicated_frame_entry, PooledBuffer):
+                            duplicated_frame_entry.release()
             
             except RapidShotReinitError as e: # Should be caught by _grab now
                 logger.warning(f"Capture thread: Re-init error caught: {e}. _needs_reinit should be True.")

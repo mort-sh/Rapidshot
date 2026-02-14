@@ -1,7 +1,8 @@
 import ctypes
+import logging
 from rapidshot.util.logging import get_logger
 from time import sleep
-from dataclasses import dataclass, InitVar
+from dataclasses import dataclass, field, InitVar
 from typing import Tuple, Optional, Union
 from rapidshot._libs.d3d11 import *
 from rapidshot._libs.dxgi import (
@@ -23,6 +24,7 @@ from rapidshot._libs.dxgi import (
 from rapidshot.core.device import Device
 from rapidshot.core.output import Output
 from rapidshot.util.errors import (
+    RapidShotError,
     RapidShotDXGIError,
     RapidShotReinitError,
     RapidShotDeviceError,
@@ -32,6 +34,15 @@ from rapidshot.util.errors import (
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Helper for safe HRESULT logging.
+def _format_hresult(value):
+    return f"{value:#010x}" if isinstance(value, int) else str(value)
+
+def _hresult_eq(actual, expected):
+    if not isinstance(actual, int):
+        return False
+    return ctypes.c_int32(actual).value == ctypes.c_int32(expected).value
 
 # Error constants for better reporting
 CURSOR_ERRORS = {
@@ -64,7 +75,7 @@ class Duplicator:
     output: InitVar[Output] = None
     device: InitVar[Device] = None
     timeout_ms: int = 10  # Timeout for AcquireNextFrame in milliseconds
-    cursor: Cursor = Cursor()
+    cursor: Cursor = field(default_factory=Cursor)
     last_error: str = ""
     cursor_visible: bool = False
     _frame_acquired: bool = False
@@ -94,9 +105,9 @@ class Duplicator:
             self.last_error = error_msg
             # Map COMError to custom exceptions
             hresult = ce.args[0] if ce.args else None
-            if hresult in (DXGI_ERROR_INVALID_CALL, DXGI_ERROR_UNSUPPORTED):
+            if _hresult_eq(hresult, DXGI_ERROR_INVALID_CALL) or _hresult_eq(hresult, DXGI_ERROR_UNSUPPORTED):
                 raise RapidShotConfigError(f"Failed to initialize duplicator due to configuration or invalid call: {ce}", hresult=hresult) from ce
-            elif hresult in (DXGI_ERROR_DEVICE_REMOVED, DXGI_ERROR_DEVICE_RESET):
+            elif _hresult_eq(hresult, DXGI_ERROR_DEVICE_REMOVED) or _hresult_eq(hresult, DXGI_ERROR_DEVICE_RESET):
                 raise RapidShotDeviceError(f"Failed to initialize duplicator due to device error: {ce}", hresult=hresult) from ce
             else:
                 raise RapidShotDXGIError(f"Failed to initialize duplicator: {ce}", hresult=hresult) from ce
@@ -177,18 +188,18 @@ class Duplicator:
                 
         except comtypes.COMError as ce:
             hresult = ce.args[0] if ce.args else None
-            self.last_error = f"COMError in update_frame: {ce} (HRESULT: {hresult:#010x if isinstance(hresult, int) else hresult})"
+            self.last_error = f"COMError in update_frame: {ce} (HRESULT: {_format_hresult(hresult)})"
             logger.warning(self.last_error)
 
-            if hresult == DXGI_ERROR_WAIT_TIMEOUT:
+            if _hresult_eq(hresult, DXGI_ERROR_WAIT_TIMEOUT):
                 logger.debug("Frame acquisition timed out.")
                 self.updated = False # No new frame
                 # Do not return here, finally block must execute
-            elif hresult == DXGI_ERROR_ACCESS_LOST or hresult == ABANDONED_MUTEX_EXCEPTION:
+            elif _hresult_eq(hresult, DXGI_ERROR_ACCESS_LOST) or _hresult_eq(hresult, ABANDONED_MUTEX_EXCEPTION):
                 # ABANDONED_MUTEX_EXCEPTION (0x000002E8) can also indicate a state requiring reinitialization.
                 # self.release() # Release current resources, might be part of reinit logic higher up
                 raise RapidShotReinitError(f"Access lost, re-initialization needed: {ce}", hresult=hresult) from ce
-            elif hresult == DXGI_ERROR_DEVICE_REMOVED or hresult == DXGI_ERROR_DEVICE_RESET:
+            elif _hresult_eq(hresult, DXGI_ERROR_DEVICE_REMOVED) or _hresult_eq(hresult, DXGI_ERROR_DEVICE_RESET):
                 # self.release() # Release current resources
                 raise RapidShotDeviceError(f"Device error, re-initialization needed: {ce}", hresult=hresult) from ce
             else:
@@ -276,10 +287,11 @@ class Duplicator:
                 logger.debug("Frame released")
             except comtypes.COMError as ce:
                 # Don't log as warning for specific known error code
-                if ce.args and ce.args[0] == -2005270527:
+                if ce.args and _hresult_eq(ce.args[0], DXGI_ERROR_INVALID_CALL):
                     logger.debug(f"Frame already released: {ce}")
                 else:
-                    logger.warning(f"Failed to release frame: {ce} (HRESULT: {ce.args[0]:#010x if ce.args else 'N/A'})")
+                    hresult_text = _format_hresult(ce.args[0]) if ce.args else "N/A"
+                    logger.warning(f"Failed to release frame: {ce} (HRESULT: {hresult_text})")
                     # Not raising custom error here as it's a cleanup step, but logging is important.
                     # If specific HRESULTs here are critical, they could be mapped.
                     self.last_error = f"Failed to release frame: {ce}" # Keep last_error for simple errors
@@ -298,7 +310,7 @@ class Duplicator:
                 logger.info("Duplicator resources released.")
             except comtypes.COMError as ce:
                 hresult = ce.args[0] if ce.args else None
-                error_msg = f"Failed to release duplicator: {ce} (HRESULT: {hresult:#010x if isinstance(hresult, int) else hresult})"
+                error_msg = f"Failed to release duplicator: {ce} (HRESULT: {_format_hresult(hresult)})"
                 logger.warning(error_msg)
                 # Set last_error but don't necessarily raise; this is a cleanup.
                 # If this fails, often the parent (ScreenCapture) will try to release Device too.
@@ -356,15 +368,15 @@ class Duplicator:
                 
         except comtypes.COMError as ce:
             hresult = ce.args[0] if ce.args else None
-            self.last_error = f"COMError in get_frame_pointer_shape: {ce} (HRESULT: {hresult:#010x if isinstance(hresult, int) else hresult})"
+            self.last_error = f"COMError in get_frame_pointer_shape: {ce} (HRESULT: {_format_hresult(hresult)})"
             logger.warning(self.last_error)
 
-            if hresult == DXGI_ERROR_ACCESS_LOST:
+            if _hresult_eq(hresult, DXGI_ERROR_ACCESS_LOST):
                 # This specific error should propagate as it requires re-initialization.
                 # Caller (update_frame) will handle this by raising RapidShotReinitError.
                 # For now, let this COMError propagate up to update_frame's handler.
                 raise # Re-raise to be caught by update_frame's COMError handler
-            elif hresult == DXGI_ERROR_NOT_FOUND:
+            elif _hresult_eq(hresult, DXGI_ERROR_NOT_FOUND):
                 # This is a common case, not necessarily a critical error for the duplicator itself.
                 return False, False, f"Cursor shape not found (HRESULT: {hresult:#010x})"
             # Other errors are logged and returned as failure.

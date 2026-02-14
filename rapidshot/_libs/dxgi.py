@@ -2,7 +2,7 @@ import ctypes
 import ctypes.wintypes as wintypes
 import comtypes
 import logging
-from .d3d11 import ID3D11Device
+from .d3d11 import ID3D11Device, ID3D11Texture2D
 
 # Set up logger
 logger = logging.getLogger("rapidshot._libs.dxgi")
@@ -11,6 +11,10 @@ logger = logging.getLogger("rapidshot._libs.dxgi")
 DXGI_ERROR_ACCESS_LOST = 0x887A0026
 DXGI_ERROR_NOT_FOUND = 0x887A0002
 DXGI_ERROR_WAIT_TIMEOUT = 0x887A0027
+DXGI_ERROR_INVALID_CALL = 0x887A0001
+DXGI_ERROR_UNSUPPORTED = 0x887A0004
+DXGI_ERROR_DEVICE_REMOVED = 0x887A0005
+DXGI_ERROR_DEVICE_RESET = 0x887A0007
 ABANDONED_MUTEX_EXCEPTION = -0x7785ffda  # -2005270490
 
 # Pointer shape type constants

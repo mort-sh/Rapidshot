@@ -7,31 +7,37 @@ name = "rapidshot"
 version = "1.1.0"
 description = "A high-performance screencapture library for Windows using Desktop Duplication API"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.8,<3.12.0"
 license = { text = "MIT" }
-authors = [
-    { name = "RapidShot Contributors", email = "example@example.com" }
+authors = [{ name = "RapidShot Contributors", email = "example@example.com" }]
+keywords = [
+  "screencapture",
+  "desktop-duplication",
+  "screen-recorder",
+  "windows",
 ]
-keywords = ["screencapture", "desktop-duplication", "screen-recorder", "windows"]
 classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: Microsoft :: Windows",
-    "Operating System :: Microsoft :: Windows :: Windows 10",
-    "Operating System :: Microsoft :: Windows :: Windows 11",
-    "Topic :: Multimedia :: Graphics",
-    "Topic :: Multimedia :: Graphics :: Capture",
-    "Topic :: Multimedia :: Graphics :: Capture :: Screen Capture"
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: Microsoft :: Windows :: Windows 10",
+  "Operating System :: Microsoft :: Windows :: Windows 11",
+  "Topic :: Multimedia :: Graphics",
+  "Topic :: Multimedia :: Graphics :: Capture",
+  "Topic :: Multimedia :: Graphics :: Capture :: Screen Capture",
 ]
 dependencies = [
     "numpy>=1.19.0",
     "comtypes>=1.1.0",
+    "ipython>=8.12.3",
+    "pynput>=1.8.1",
+    "av>=12.3.0",
 ]
 
 [project.optional-dependencies]
@@ -40,26 +46,23 @@ gpu = ["cupy-cuda11x>=11.0.0", "opencv-python>=4.5.0"]
 gpu_cuda12 = ["cupy-cuda12x>=12.0.0", "opencv-python>=4.5.0"]
 pil = ["pillow>=8.0.0"]
 all = [
-    "numpy>=1.19.0",
-    "comtypes>=1.1.0",
-    "opencv-python>=4.5.0",
-    "pillow>=8.0.0",
-    "cupy-cuda11x>=11.0.0", # Added for default GPU support
+  "numpy>=1.19.0",
+  "comtypes>=1.1.0",
+  "opencv-python>=4.5.0",
+  "pillow>=8.0.0",
+  "cupy-cuda11x>=11.0.0", # Added for default GPU support
+  "rapidshot",
 ]
 dev = [
-    "black>=22.3.0",
-    "isort>=5.10.1", 
-    "mypy>=0.950",
-    "pytest>=7.0.0",
-    "pytest-cov>=3.0.0",
-    "flake8>=4.0.1",
-    "tox>=3.24.5",
+  "black>=22.3.0",
+  "isort>=5.10.1",
+  "mypy>=0.950",
+  "pytest>=7.0.0",
+  "pytest-cov>=3.0.0",
+  "flake8>=4.0.1",
+  "tox>=3.24.5",
 ]
-docs = [
-    "sphinx>=4.5.0",
-    "sphinx-rtd-theme>=1.0.0",
-    "myst-parser>=0.18.0",
-]
+docs = ["sphinx>=4.5.0", "sphinx-rtd-theme>=1.0.0", "myst-parser>=0.18.0"]
 
 [project.urls]
 "Homepage" = "https://github.com/Zaatra/Rapidshot"
@@ -88,3 +91,7 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
+
+[tool.uv.sources]
+rapidshot = { workspace = true }
+
