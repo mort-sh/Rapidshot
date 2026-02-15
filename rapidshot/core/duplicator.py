@@ -115,10 +115,24 @@ class Duplicator:
 
     def update_frame(self) -> bool:
         """
-        Update the frame and cursor state.
+        Update the frame and cursor state using non-blocking poll.
+        
         Sets self.updated to True if a new frame is available, False otherwise.
-        Returns True if call was successful (even if no new frame), False only for ACCESS_LOST.
-        Raises exceptions for critical errors.
+        
+        Returns:
+            bool: True if the operation was successful (even if no new frame was available),
+                  False only for DXGI_ERROR_ACCESS_LOST which requires re-initialization.
+                  
+        Raises:
+            RapidShotDeviceError: For device-level errors (DEVICE_REMOVED, DEVICE_RESET)
+            RapidShotDXGIError: For other unexpected DXGI errors
+            RapidShotError: For unexpected Python exceptions
+            
+        Note:
+            - Returns True for WAIT_TIMEOUT (no new frame available yet)
+            - If a frame is acquired (self._frame_acquired = True), caller must call
+              release_frame() when done processing the texture
+            - The IDXGIResource reference is released automatically within this method
         """
         # Reset state for this update attempt
         self.updated = False
@@ -171,8 +185,10 @@ class Duplicator:
             if last_present_time == 0:
                 logger.debug("No new frame content")
                 self.updated = False
-                # Release the resource reference since we won't process the frame
+                # Release the resource reference and the frame since there's no new content
                 self._safe_release_resource(res)
+                self.duplicator.ReleaseFrame()
+                self._frame_acquired = False
                 return True
 
             # Process the frame
