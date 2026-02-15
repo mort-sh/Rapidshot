@@ -52,7 +52,7 @@ def test_numpy_processor_with_pooled_buffer():
     rotation_angle = 0
     
     # Create a pre-allocated buffer (simulating pooled buffer)
-    output_buffer = np.empty((height, width, 4), dtype=np.uint8)
+    output_buffer = np.zeros((height, width, 4), dtype=np.uint8)
     
     result = processor.process(mock_rect, width, height, region, rotation_angle, output_buffer)
     
@@ -75,7 +75,7 @@ def test_numpy_processor_returns_same_buffer_when_no_shape_change():
     rotation_angle = 0  # No rotation
     
     # Create a pre-allocated buffer
-    output_buffer = np.empty((height, width, 4), dtype=np.uint8)
+    output_buffer = np.zeros((height, width, 4), dtype=np.uint8)
     
     result = processor.process(mock_rect, width, height, region, rotation_angle, output_buffer)
     
@@ -95,7 +95,7 @@ def test_numpy_processor_returns_different_buffer_with_color_conversion():
     rotation_angle = 0
     
     # Create a pre-allocated buffer (4 channels)
-    output_buffer = np.empty((height, width, 4), dtype=np.uint8)
+    output_buffer = np.zeros((height, width, 4), dtype=np.uint8)
     
     result = processor.process(mock_rect, width, height, region, rotation_angle, output_buffer)
     
