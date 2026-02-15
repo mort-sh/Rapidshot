@@ -35,7 +35,7 @@ class NumpyProcessor:
         Get the integer address from a ctypes pointer.
 
         Args:
-            ptr: A ctypes pointer object
+            ptr: A ctypes pointer object (c_void_p, POINTER, or int)
 
         Returns:
             int: The memory address
@@ -43,10 +43,12 @@ class NumpyProcessor:
         Raises:
             ValueError: If the pointer is invalid
         """
-        if hasattr(ptr, "contents"):
-            return ctypes.addressof(ptr.contents)
-        elif isinstance(ptr, int):
+        if isinstance(ptr, int):
             return ptr
+        elif isinstance(ptr, ctypes.c_void_p):
+            return ptr.value
+        elif hasattr(ptr, "contents"):
+            return ctypes.addressof(ptr.contents)
         else:
             raise ValueError("Invalid pointer")
 
@@ -254,8 +256,11 @@ class NumpyProcessor:
 
             # Now handle output buffer logic
             if output_buffer is None:
+                # No pool: copy data to avoid returning view into mapped memory
+                # The caller unmaps immediately after process() returns,
+                # so a view would point to unmapped memory
                 is_pooled_buffer = False
-                current_array = image
+                current_array = np.copy(image)
             else:
                 is_pooled_buffer = True
                 if (
