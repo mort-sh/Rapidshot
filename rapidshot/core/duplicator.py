@@ -101,17 +101,18 @@ class Duplicator:
             else:
                 raise RapidShotDXGIError(f"Failed to initialize duplicator: {ce}", hresult=hresult) from ce
 
-    def _safe_release_resource(self, res: ctypes.POINTER(IDXGIResource)) -> None:
+    def _safe_release_resource(self, res) -> None:
         """
         Safely release an IDXGIResource reference.
         
         Args:
-            res: The resource reference to release
+            res: The resource reference to release (ctypes.POINTER(IDXGIResource))
         """
-        try:
-            res.Release()
-        except Exception as e:
-            logger.debug(f"Failed to release resource: {e}")
+        if res:
+            try:
+                res.Release()
+            except Exception as e:
+                logger.debug(f"Failed to release resource: {e}")
 
     def update_frame(self) -> bool:
         """
@@ -220,8 +221,11 @@ class Duplicator:
                 self.updated = False
                 return True
             elif hresult == DXGI_ERROR_ACCESS_LOST or hresult == ABANDONED_MUTEX_EXCEPTION:
-                # ABANDONED_MUTEX_EXCEPTION (0x000002E8) can also indicate a state requiring reinitialization.
+                # Both ACCESS_LOST and ABANDONED_MUTEX_EXCEPTION require re-initialization.
+                # ABANDONED_MUTEX_EXCEPTION (0x000002E8) indicates the Desktop Duplication API
+                # mutex was abandoned, typically due to another process crashing or system issues.
                 self.last_error = f"Access lost, re-initialization needed: {ce}"
+                logger.warning(self.last_error)
                 return False
             elif hresult == DXGI_ERROR_DEVICE_REMOVED or hresult == DXGI_ERROR_DEVICE_RESET:
                 # Device errors should propagate
