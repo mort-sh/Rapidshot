@@ -165,8 +165,17 @@ class NumpyProcessor:
             width: Width
             height: Height
             region: Region to capture
-            rotation_angle: Rotation angle,
+            rotation_angle: Rotation angle
             output_buffer: Pre-allocated NumPy array to store the processed frame.
+            
+        Returns:
+            tuple: (processed_array, is_pooled_buffer_valid) where processed_array is the
+                   resulting frame and is_pooled_buffer_valid indicates if output_buffer
+                   was reused or a new array was allocated.
+                   
+        Raises:
+            ValueError: If rect is invalid, region is out of bounds, or output_buffer 
+                       shape does not match the expected region shape.
         """
         # Phase 1: Get data into the output buffer (no rotation, no color conversion yet)
         if not hasattr(rect, 'pBits') or not rect.pBits:

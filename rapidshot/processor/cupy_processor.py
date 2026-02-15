@@ -211,8 +211,17 @@ class CupyProcessor:
             width: Width
             height: Height
             region: Region to capture
-            rotation_angle: Rotation angle,
+            rotation_angle: Rotation angle
             output_buffer: Pre-allocated CuPy array to store the processed frame.
+            
+        Returns:
+            tuple: (processed_array, is_pooled_buffer_valid) where processed_array is the
+                   resulting frame and is_pooled_buffer_valid indicates if output_buffer
+                   was reused or a new array was allocated.
+                   
+        Raises:
+            ValueError: If rect is invalid, region is out of bounds, or output_buffer 
+                       shape does not match the expected region shape.
         """
         # Phase 1: Get data into the output buffer (no rotation, no color conversion yet)
         # Import numpy for ctypes bridge, cupy (self.cp) is already imported
