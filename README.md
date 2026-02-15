@@ -365,6 +365,36 @@ Optional deep validation (runs DirectX diagnostics too):
 RAPIDSHOT_VALIDATE_DIAGNOSTIC=1 bash scripts/validate.sh
 ```
 
+## Diagnostic CLI
+
+`diagnostic_script.py` now uses a Typer + Rich CLI with styled telemetry output.
+
+Show usage/help:
+
+```bash
+uv run python diagnostic_script.py --help
+```
+
+Run full diagnostics (default behavior also runs full diagnostics):
+
+```bash
+uv run python diagnostic_script.py run
+```
+
+Increase detail level with verbosity flags:
+
+```bash
+uv run python diagnostic_script.py -v
+uv run python diagnostic_script.py -vv
+uv run python diagnostic_script.py -vvv
+```
+
+Write artifacts to a custom directory and enable JSON telemetry:
+
+```bash
+uv run python diagnostic_script.py --output-dir .test --json-report
+```
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request
