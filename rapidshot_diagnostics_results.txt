@@ -1,10 +1,43 @@
-RapidShot DirectX Diagnostic Results - 2026-02-15 15:24:22
+RapidShot DirectX Diagnostic Results - 2026-02-15 17:30:58
 
-PASSED: 27
-WARNINGS: 3
+Duration: 34.75s
+PASSED: 29
+WARNINGS: 4
 FAILED: 0
 
 WARNINGS:
-  • Optional dependency opencv-python is not installed
-  • Optional dependency pillow is not installed
-  • WMI module not available. Install with 'pip install wmi' for detailed GPU information.
+  - Optional dependency missing: opencv-python
+  - Optional dependency missing: pillow
+  - Optional dependency missing: cupy
+  - WMI package not installed; falling back to dxdiag parsing.
+
+PASSED CHECKS:
+  - Windows 10 should support modern DirectX features.
+  - 64-bit Python detected.
+  - numpy 2.4.2 installed
+  - comtypes 1.4.15 installed
+  - d3d11.dll is available
+  - dxgi.dll is available
+  - d3dcompiler_47.dll is available
+  - All essential DirectX DLLs are available.
+  - dxdiag GPU detected: NVIDIA GeForce RTX 3080
+  - dxdiag GPU detected: NVIDIA GeForce RTX 3080
+  - dxdiag GPU detected: NVIDIA GeForce RTX 3080
+  - dxdiag GPU detected: AMD Radeon(TM) Graphics
+  - Created DXGI 1.2+ (CreateDXGIFactory2)
+  - Found 3 graphics adapters.
+  - D3D11 device created successfully at feature level 11.1
+  - Desktop duplication prerequisite (DXGI factory) is operational.
+  - Imported rapidshot from C:\Users\m0rt\projects\RapidshotOG\rapidshot\__init__.py
+  - RapidShot version: 1.0.1.post1.dev27+gf89ad3e5e.d20260215
+  - Core rapidshot attributes are present.
+  - Imported rapidshot.core successfully.
+  - rapidshot.core exports expected symbols.
+  - Imported rapidshot._libs.d3d11 and rapidshot._libs.dxgi
+  - rapidshot.device_info() returned data
+  - rapidshot.output_info() returned data
+  - rapidshot.create() returned a capture instance
+  - Initial frame captured: 3440x1440x3
+  - Delayed frame capture succeeded
+  - Capture resources released
+  - rapidshot.clean_up() completed

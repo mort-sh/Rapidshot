@@ -21,9 +21,11 @@ from typing import Any, Callable, Sequence
 
 import comtypes
 import typer
+import typer.rich_utils as typer_rich_utils
 from rich import box
 from rich.columns import Columns
 from rich.console import Console
+from rich.highlighter import NullHighlighter
 from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.table import Table
@@ -35,6 +37,31 @@ SPARK_CHARS = "▁▂▃▄▅▆▇█"
 DEFAULT_LOG_FILE = "rapidshot_diagnostics.log"
 DEFAULT_RESULTS_FILE = "rapidshot_diagnostics_results.txt"
 DEFAULT_JSON_FILE = "rapidshot_diagnostics_results.json"
+
+
+def _configure_typer_help_theme() -> None:
+    """Soften Typer/Rich help styling for dark terminals."""
+    typer_rich_utils.STYLE_USAGE = "bold cyan"
+    typer_rich_utils.STYLE_USAGE_COMMAND = "bold white"
+    typer_rich_utils.STYLE_HELPTEXT = "white"
+    typer_rich_utils.STYLE_HELPTEXT_FIRST_LINE = "bold white"
+    typer_rich_utils.STYLE_OPTION = "bold bright_cyan"
+    typer_rich_utils.STYLE_SWITCH = "bold bright_green"
+    typer_rich_utils.STYLE_NEGATIVE_OPTION = "bold magenta"
+    typer_rich_utils.STYLE_NEGATIVE_SWITCH = "bold magenta"
+    typer_rich_utils.STYLE_OPTION_DEFAULT = "italic bright_white"
+    typer_rich_utils.STYLE_OPTION_HELP = "white"
+    typer_rich_utils.STYLE_OPTION_ENVVAR = "bright_yellow"
+    typer_rich_utils.STYLE_METAVAR = "bold bright_magenta"
+    typer_rich_utils.STYLE_METAVAR_SEPARATOR = "bright_black"
+    typer_rich_utils.STYLE_OPTIONS_PANEL_BORDER = "bright_blue"
+    typer_rich_utils.STYLE_COMMANDS_PANEL_BORDER = "bright_blue"
+    typer_rich_utils.STYLE_OPTIONS_TABLE_BORDER_STYLE = "bright_black"
+    typer_rich_utils.STYLE_COMMANDS_TABLE_BORDER_STYLE = "bright_black"
+    typer_rich_utils.STYLE_ERRORS_PANEL_BORDER = "bright_magenta"
+    typer_rich_utils.STYLE_ERRORS_SUGGESTION = "bright_white"
+    # Disable aggressive token highlighting that can look like black-backed chunks.
+    typer_rich_utils.highlighter = NullHighlighter()
 
 
 def _install_trace_level() -> None:
@@ -1448,6 +1475,9 @@ def render_saved_summary(ctx: RunContext) -> int:
 
     renderer.render_file_spotlight("Summary view", summary_path, "Rendered")
     return 0
+
+
+_configure_typer_help_theme()
 
 
 app = typer.Typer(
