@@ -404,6 +404,15 @@ class ScreenCapture:
             
         return self._shot(image_ptr, region)
 
+    def _handle_access_lost(self) -> None:
+        """
+        Handle DXGI ACCESS_LOST error by flagging for re-initialization.
+        """
+        logger.warning("DXGI Access lost during update_frame. Flagging for re-initialization.")
+        self._needs_reinit = True
+        if self._duplicator._frame_acquired:
+            self._duplicator.release_frame()
+
     def _shot(self, image_ptr, region: Tuple[int, int, int, int]) -> bool:
         """
         Internal implementation of shot.
@@ -418,10 +427,7 @@ class ScreenCapture:
         update_result = self._duplicator.update_frame()
         if not update_result:
             # ACCESS_LOST - need re-initialization
-            logger.warning(f"DXGI Access lost during update_frame in _shot. Flagging for re-initialization.")
-            self._needs_reinit = True
-            if self._duplicator._frame_acquired:
-                self._duplicator.release_frame()
+            self._handle_access_lost()
             return False
         
         frame_needs_release = self._duplicator._frame_acquired
@@ -533,10 +539,7 @@ class ScreenCapture:
                 update_result = self._duplicator.update_frame()
                 if not update_result:
                     # ACCESS_LOST - need re-initialization
-                    logger.warning(f"DXGI Access lost during update_frame. Flagging for re-initialization.")
-                    self._needs_reinit = True
-                    if self._duplicator._frame_acquired:
-                        self._duplicator.release_frame()
+                    self._handle_access_lost()
                     if pooled_buffer_wrapper:
                         pooled_buffer_wrapper.release()
                     return None
