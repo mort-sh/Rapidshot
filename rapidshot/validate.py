@@ -56,13 +56,28 @@ def main() -> int:
     else:
         _log("No tests directory found; skipping pytest")
 
-    if shutil.which("ruff"):
+    ruff_check = subprocess.run(
+        [sys.executable, "-m", "ruff", "--version"],
+        cwd=ROOT_DIR,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if ruff_check.returncode == 0:
         _run_step(
             "Running ruff check",
-            ["ruff", "check", "rapidshot", "tests", "diagnostic_script.py"],
+            [
+                sys.executable,
+                "-m",
+                "ruff",
+                "check",
+                "rapidshot",
+                "tests",
+                "diagnostic_script.py",
+            ],
         )
     else:
-        _log("ruff not installed; skipping lint")
+        _log("ruff not installed in environment; skipping lint")
 
     if os.environ.get("RAPIDSHOT_VALIDATE_DIAGNOSTIC", "0") == "1":
         diagnostic_script = ROOT_DIR / "diagnostic_script.py"

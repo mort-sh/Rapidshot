@@ -1,5 +1,4 @@
 import time
-import numpy as np
 import argparse
 import logging
 import rapidshot

@@ -18,29 +18,22 @@ A high-performance screencapture library for Windows using the Desktop Duplicati
 
 > **Note:** The package is installed as `rapidshot` and imported as `import rapidshot`.
 
-### Basic Installation
+### Profile Matrix
 
-```bash
-pip install rapidshot
-```
+| Profile      | Use case | Install command |
+|--------------|----------|-----------------|
+| `core`       | Core RapidShot runtime and diagnostic CLI | `pip install rapidshot` |
+| `cv2`        | OpenCV-based workflows | `pip install "rapidshot[cv2]"` |
+| `pil`        | PIL/Pillow image workflows | `pip install "rapidshot[pil]"` |
+| `examples`   | Run bundled examples (`av`, `pynput`, `opencv-python`, `pillow`) | `pip install "rapidshot[examples]"` |
+| `benchmarks` | Run benchmarks against other capture libraries | `pip install "rapidshot[benchmarks]"` |
+| `gpu-cuda11` | GPU acceleration with CuPy (CUDA 11 runtime) | `pip install "rapidshot[gpu-cuda11]"` |
+| `gpu-cuda12` | GPU acceleration with CuPy (CUDA 12 runtime) | `pip install "rapidshot[gpu-cuda12]"` |
 
-### With OpenCV Support (recommended)
+### Compatibility Aliases
 
-```bash
-pip install rapidshot[cv2]
-```
-
-### With NVIDIA GPU Acceleration
-
-```bash
-pip install rapidshot[gpu]
-```
-
-### With All Dependencies
-
-```bash
-pip install rapidshot[all]
-```
+- `rapidshot[gpu]` is kept as an alias of `rapidshot[gpu-cuda11]`
+- `rapidshot[gpu_cuda12]` is kept as an alias of `rapidshot[gpu-cuda12]`
 
 ## Quick Start
 
@@ -55,9 +48,8 @@ screencapture = rapidshot.create()
 # Take a screencapture
 frame = screencapture.grab()
 
-# Display the screencapture
-from PIL import Image
-Image.fromarray(frame).show()
+# Inspect the frame
+print(frame.shape)
 ```
 
 ### Region-based Capture
@@ -295,6 +287,9 @@ RapidShot includes benchmark utilities to compare its performance against other 
 To run a benchmark comparison:
 
 ```bash
+# Install benchmark profile first
+pip install "rapidshot[benchmarks]"
+
 # Run RapidShot benchmark
 python benchmarks/rapidshot_max_fps.py
 
@@ -304,6 +299,8 @@ python benchmarks/rapidshot_max_fps.py --gpu
 # Test with different color formats
 python benchmarks/rapidshot_max_fps.py --color BGRA
 ```
+
+> Benchmark note: the benchmark script import is `import d3dshot`, provided by the maintained `typed-d3dshot` package in the `benchmarks` profile.
 
 ### Benchmark Results
 

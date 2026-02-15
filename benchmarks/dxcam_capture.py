@@ -1,4 +1,3 @@
-import time
 import dxcam
 
 TOP = 0

@@ -4,6 +4,7 @@ from rapidshot.util.logging import get_logger
 import platform
 import sys
 from typing import Optional, Tuple, Dict, Any
+from importlib.metadata import PackageNotFoundError, version
 
 # Screen capture relies on Windows-specific COM technology. Attempt to import it lazily so
 # that other modules (e.g., memory pools) remain usable on non-Windows platforms.
@@ -482,7 +483,10 @@ def get_version_info() -> Dict[str, Any]:
 
 
 # Version information
-__version__ = "1.1.0"
+try:
+    __version__ = version("rapidshot")
+except PackageNotFoundError:
+    __version__ = "0.0.0+unknown"
 __author__ = "Rapidshot Contributors"
 __description__ = (
     "High-performance screencapture library for Windows using Desktop Duplication API"
