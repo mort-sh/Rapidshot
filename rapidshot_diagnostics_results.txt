@@ -1,9 +1,10 @@
-RapidShot DirectX Diagnostic Results - 2026-02-15 06:40:05
+RapidShot DirectX Diagnostic Results - 2026-02-15 15:24:22
 
-PASSED: 25
-WARNINGS: 2
+PASSED: 27
+WARNINGS: 3
 FAILED: 0
 
 WARNINGS:
   • Optional dependency opencv-python is not installed
   • Optional dependency pillow is not installed
+  • WMI module not available. Install with 'pip install wmi' for detailed GPU information.

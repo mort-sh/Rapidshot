@@ -329,6 +329,42 @@ The table below shows typical performance results across different libraries:
 - **Black screens when capturing:** Verify the application isn't running in exclusive fullscreen mode.
 - **Low performance:** Experiment with different backends (NUMPY vs. CUPY) to optimize performance.
 
+### DXGI/COM Stability Postmortem (2026-02)
+
+RapidShot recently resolved a difficult DirectX initialization failure where DXGI factory and adapter calls could appear to work, but later calls (such as output/device operations) crashed with access violations.
+
+What was observed:
+- `CreateDXGIFactory2` and adapter enumeration could pass.
+- Later calls like `IDXGIOutput::GetDesc` or `rapidshot.create()` failed intermittently.
+- `comtypes` emitted destructor-time exceptions (`Exception ignored in _compointer_base.__del__`).
+
+Root cause:
+- COM interface pointers were being manually `Release()`d in multiple paths while also being owned by `comtypes`, which auto-releases during finalization.
+- That caused double-release and stale pointer corruption.
+
+Fixes applied:
+- Standardized safe COM release behavior in runtime cleanup paths.
+- Removed manual release patterns that conflicted with `comtypes` ownership.
+- Updated diagnostic cleanup logic so tests no longer self-corrupt COM pointer state.
+- Re-verified with `diagnostic_script.py` end-to-end.
+
+Outcome:
+- DXGI factory creation, D3D11 device creation, `rapidshot.create()`, and frame grabs now complete reliably in diagnostics.
+
+## Development Validation
+
+RapidShot now includes a lightweight validation script:
+
+```bash
+bash scripts/validate.sh
+```
+
+Optional deep validation (runs DirectX diagnostics too):
+
+```bash
+RAPIDSHOT_VALIDATE_DIAGNOSTIC=1 bash scripts/validate.sh
+```
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request

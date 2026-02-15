@@ -33,6 +33,12 @@ pytest -v
 
 # Run with coverage
 pytest --cov=rapidshot --cov-report=html
+
+# Lightweight project validation
+bash scripts/validate.sh
+
+# Include full DirectX diagnostic pass
+RAPIDSHOT_VALIDATE_DIAGNOSTIC=1 bash scripts/validate.sh
 ```
 
 ### Code Quality
@@ -127,6 +133,13 @@ The codebase follows a layered architecture from low-level COM bindings to high-
 
 ## Critical Concepts
 
+### COM Pointer Ownership Rule (Important)
+
+- `comtypes` pointer wrappers already manage COM lifetimes.
+- Do not mix unmanaged manual `Release()` calls with `comtypes`-owned pointers unless you also clear/null the pointer immediately.
+- Use `rapidshot.util.ctypes_helpers.release_com_ptr()` for explicit cleanup paths.
+- Double-release can silently corrupt pointer state and later fail in unrelated calls.
+
 ### Desktop Duplication API Behavior
 
 - **Frame acquisition**: `AcquireNextFrame()` blocks until screen changes or timeout
@@ -163,11 +176,35 @@ The codebase follows a layered architecture from low-level COM bindings to high-
 ## Common Pitfalls
 
 1. **Not releasing resources**: Always call `screencapture.release()` or use context managers (if implemented)
-2. **Region coordinates**: Remember to validate and convert based on rotation
-3. **Timeout interpretation**: `DXGI_ERROR_WAIT_TIMEOUT` is not an error - screen just hasn't updated
-4. **Memory pool shape mismatch**: If grab region doesn't match pool shape, it bypasses pool (slower)
-5. **GPU acceleration**: Requires CuPy and compatible CUDA drivers; gracefully falls back to CPU if unavailable
-6. **Python version**: Python 3.12+ may have compatibility issues with dependencies
+2. **Manual COM release misuse**: Calling `Release()` directly on `comtypes` pointers in many places can trigger finalizer-time double-release.
+3. **Region coordinates**: Remember to validate and convert based on rotation
+4. **Timeout interpretation**: `DXGI_ERROR_WAIT_TIMEOUT` is not an error - screen just hasn't updated
+5. **Memory pool shape mismatch**: If grab region doesn't match pool shape, it bypasses pool (slower)
+6. **GPU acceleration**: Requires CuPy and compatible CUDA drivers; gracefully falls back to CPU if unavailable
+7. **Python version**: Python 3.12+ may have compatibility issues with dependencies
+
+## Recent DXGI Stabilization Work (2026-02)
+
+This repository went through a deep DXGI/COM debugging cycle to resolve factory creation side effects and downstream crashes.
+
+Debugging trail:
+- Reproduced failures in both `diagnostic_script.py` and `rapidshot.create()`.
+- Confirmed that factory creation itself was often healthy, but later COM calls crashed.
+- Isolated a lifetime issue by monkey-patching factory release behavior and observing stable captures.
+- Traced failure mode to double-release of COM pointers (`Release()` + `comtypes` finalizer).
+
+Implementation outcome:
+- Added safe release helper: `release_com_ptr()` in `rapidshot/util/ctypes_helpers.py`.
+- Replaced high-risk manual release calls in:
+  - `rapidshot/util/io.py`
+  - `rapidshot/core/device.py`
+  - `rapidshot/core/stagesurf.py`
+  - `rapidshot/core/duplicator.py`
+  - `diagnostic_script.py`
+
+Verification outcome:
+- End-to-end diagnostics complete with `FAILED: 0`.
+- `rapidshot.create()` and frame grabbing now pass in repeated smoke checks.
 
 ## Testing Notes
 

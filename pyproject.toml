@@ -41,7 +41,11 @@ dependencies = [
   "setuptools>=75.3.4",
   "pillow>=10.4.0",
   "opencv-python>=4.13.0.92",
+  "pytest>=8.3.5",
 ]
+
+[project.scripts]
+validate = "rapidshot.validate:main"
 
 [project.optional-dependencies]
 cv2 = ["opencv-python>=4.5.0"]
@@ -55,6 +59,7 @@ all = [
   "pillow>=8.0.0",
   "cupy-cuda12x>=12.0.0", # Added for default GPU support
   "rapidshot",
+  "pillow>=8.0.0",
 ]
 dev = [
   "black>=22.3.0",
@@ -99,9 +104,5 @@ python_functions = "test_*"
 rapidshot = { workspace = true }
 
 [dependency-groups]
-all = [
-    "rapidshot",
-]
-gpu-cuda12 = [
-    "rapidshot[gpu_cuda12]",
-]
+all = ["rapidshot"]
+gpu-cuda12 = ["rapidshot[gpu_cuda12]"]
