@@ -30,6 +30,26 @@ class NumpyProcessor:
         if self.color_mode == "BGRA":
             self.color_mode = None
 
+    def _get_pointer_address(self, ptr):
+        """
+        Get the integer address from a ctypes pointer.
+
+        Args:
+            ptr: A ctypes pointer object
+
+        Returns:
+            int: The memory address
+
+        Raises:
+            ValueError: If the pointer is invalid
+        """
+        if hasattr(ptr, "contents"):
+            return ctypes.addressof(ptr.contents)
+        elif isinstance(ptr, int):
+            return ptr
+        else:
+            raise ValueError("Invalid pointer")
+
     def process_cvtcolor(self, image):
         """
         Convert color format with robust error handling.
@@ -158,19 +178,9 @@ class NumpyProcessor:
             pitch = int(rect.Pitch)
             row_bytes = width * 4
 
-            # Get source address using ctypes.addressof directly
-            if hasattr(rect.pBits, "contents"):
-                src_address = ctypes.addressof(rect.pBits.contents)
-            else:
-                raise ValueError("Invalid source pointer for shot copy")
-
-            # Get destination address
-            if hasattr(image_ptr, "contents"):
-                dst_address = ctypes.addressof(image_ptr.contents)
-            elif isinstance(image_ptr, int):
-                dst_address = image_ptr
-            else:
-                raise ValueError("Invalid destination pointer for shot copy")
+            # Get source and destination addresses
+            src_address = self._get_pointer_address(rect.pBits)
+            dst_address = self._get_pointer_address(image_ptr)
 
             if pitch == row_bytes:
                 ctypes.memmove(dst_address, src_address, row_bytes * height)
@@ -202,12 +212,12 @@ class NumpyProcessor:
 
             pitch = int(rect.Pitch)
 
-            # Get the pointer address using ctypes.addressof directly
-            # This avoids the pointer_to_address helper that can return None
-            if hasattr(rect.pBits, "contents"):
-                src_address = ctypes.addressof(rect.pBits.contents)
-            else:
-                raise ValueError("Mapped rect does not contain a valid pointer")
+            # Validate pitch is aligned to 4-byte boundaries (BGRA pixels)
+            if pitch % 4 != 0:
+                raise ValueError(f"Pitch {pitch} is not divisible by 4")
+
+            # Get the pointer address
+            src_address = self._get_pointer_address(rect.pBits)
 
             region_left, region_top, region_right, region_bottom = region
             if not (0 <= region_left < region_right <= width) or not (
@@ -224,6 +234,15 @@ class NumpyProcessor:
             # Key insight from BetterCam: use pitch in the shape to handle stride
             pitch_in_pixels = pitch // 4
             total_size = pitch * height
+
+            # Validate buffer size matches expected dimensions
+            expected_size = height * pitch_in_pixels * 4
+            if total_size != expected_size:
+                raise ValueError(
+                    f"Buffer size mismatch: total_size={total_size}, "
+                    f"expected={expected_size}"
+                )
+
             src_buffer = (ctypes.c_ubyte * total_size).from_address(src_address)
 
             # Create view over entire mapped memory with pitch as width
