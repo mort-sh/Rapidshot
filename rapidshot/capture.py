@@ -415,57 +415,62 @@ class ScreenCapture:
         Returns:
             True if successful, False otherwise
         """
-        if self._duplicator.update_frame():
-            frame_needs_release = self._duplicator._frame_acquired
-            mapped_rect = None
-            try:
-                if not self._duplicator.updated:
-                    return False
-
-                _region = self.region_to_memory_region(region, self.rotation_angle, self._output)
-                _width = _region[2] - _region[0]
-                _height = _region[3] - _region[1]
-
-                if self._stagesurf.width != _width or self._stagesurf.height != _height:
-                    self._stagesurf.release()
-                    self._stagesurf.rebuild(output=self._output, device=self._device, dim=(_width, _height))
-
-                source_region = D3D11_BOX(
-                    left=_region[0],
-                    top=_region[1],
-                    right=_region[2],
-                    bottom=_region[3],
-                    front=0,
-                    back=1,
-                )
-
-                self._device.im_context.CopySubresourceRegion(
-                    self._stagesurf.texture,
-                    0,
-                    0,
-                    0,
-                    0,
-                    self._duplicator.texture,
-                    0,
-                    ctypes.byref(source_region),
-                )
-
-                if frame_needs_release and self._duplicator._frame_acquired:
-                    self._duplicator.release_frame()
-                    frame_needs_release = False
-
-                mapped_rect = self._stagesurf.map()
-                try:
-                    self._processor.process2(image_ptr, mapped_rect, self.shot_w, self.shot_h)
-                finally:
-                    self._stagesurf.unmap()
-                return True
-            finally:
-                if frame_needs_release and self._duplicator._frame_acquired:
-                    self._duplicator.release_frame()
-        else:
-            self._on_output_change()
+        update_result = self._duplicator.update_frame()
+        if not update_result:
+            # ACCESS_LOST - need re-initialization
+            logger.warning(f"DXGI Access lost during update_frame in _shot. Flagging for re-initialization.")
+            self._needs_reinit = True
+            if self._duplicator._frame_acquired:
+                self._duplicator.release_frame()
             return False
+        
+        frame_needs_release = self._duplicator._frame_acquired
+        mapped_rect = None
+        try:
+            if not self._duplicator.updated:
+                return False
+
+            _region = self.region_to_memory_region(region, self.rotation_angle, self._output)
+            _width = _region[2] - _region[0]
+            _height = _region[3] - _region[1]
+
+            if self._stagesurf.width != _width or self._stagesurf.height != _height:
+                self._stagesurf.release()
+                self._stagesurf.rebuild(output=self._output, device=self._device, dim=(_width, _height))
+
+            source_region = D3D11_BOX(
+                left=_region[0],
+                top=_region[1],
+                right=_region[2],
+                bottom=_region[3],
+                front=0,
+                back=1,
+            )
+
+            self._device.im_context.CopySubresourceRegion(
+                self._stagesurf.texture,
+                0,
+                0,
+                0,
+                0,
+                self._duplicator.texture,
+                0,
+                ctypes.byref(source_region),
+            )
+
+            if frame_needs_release and self._duplicator._frame_acquired:
+                self._duplicator.release_frame()
+                frame_needs_release = False
+
+            mapped_rect = self._stagesurf.map()
+            try:
+                self._processor.process2(image_ptr, mapped_rect, self.shot_w, self.shot_h)
+            finally:
+                self._stagesurf.unmap()
+            return True
+        finally:
+            if frame_needs_release and self._duplicator._frame_acquired:
+                self._duplicator.release_frame()
 
     def _grab(self, region: Optional[Tuple[int, int, int, int]] = None) -> Optional[np.ndarray]:
         """
