@@ -34,12 +34,8 @@ from rapidshot.util.timer import (
 # Set up logger
 logger = logging.getLogger(__name__)
 
-# Try to import CuPy for GPU acceleration
-try:
-    import cupy as cp
-    CUPY_AVAILABLE = True
-except ImportError:
-    CUPY_AVAILABLE = False
+# CuPy is imported lazily when needed to avoid import errors on non-CUDA systems
+# Check will be done at runtime when GPU acceleration is requested
 
 class ScreenCapture:
     def __init__(
@@ -192,9 +188,12 @@ class ScreenCapture:
             self.nvidia_gpu = nvidia_gpu # Ensure it's set before processor/pool
 
             # Check if GPU acceleration is requested but CuPy is not available
-            if self.nvidia_gpu and not CUPY_AVAILABLE:
-                logger.warning("NVIDIA GPU acceleration requested but CuPy is not available. Falling back to CPU mode for re-init.")
-                self.nvidia_gpu = False # Fallback for this attempt
+            if self.nvidia_gpu:
+                try:
+                    import cupy
+                except ImportError:
+                    logger.warning("NVIDIA GPU acceleration requested but CuPy is not available. Falling back to CPU mode for re-init.")
+                    self.nvidia_gpu = False # Fallback for this attempt
 
             self.width, self.height = self._output.resolution # Get current resolution
             
@@ -532,7 +531,12 @@ class ScreenCapture:
                 temp_region_w = region[2] - region[0]
                 temp_shape = (temp_region_h, temp_region_w, 4)
                 if self.nvidia_gpu:
-                    output_array_for_region = cp.empty(temp_shape, dtype=cp.uint8)
+                    try:
+                        import cupy as cp
+                        output_array_for_region = cp.empty(temp_shape, dtype=cp.uint8)
+                    except ImportError:
+                        logger.warning("CuPy not available for GPU temp buffer, falling back to numpy")
+                        output_array_for_region = np.empty(temp_shape, dtype=np.uint8)
                 else:
                     output_array_for_region = np.empty(temp_shape, dtype=np.uint8)
 
@@ -806,16 +810,21 @@ class ScreenCapture:
             # Or, it's a signal that *at least one* frame is ready.
 
         # Convert to numpy if requested and if data is on GPU
-        if self.nvidia_gpu and CUPY_AVAILABLE and isinstance(frame_array, cp.ndarray):
-            if as_numpy:
-                return cp.asnumpy(frame_array)
-            else:
-                return frame_array # Return CuPy array directly
-        elif isinstance(frame_array, np.ndarray): # Already a NumPy array
+        if self.nvidia_gpu:
+            try:
+                import cupy as cp
+                if isinstance(frame_array, cp.ndarray):
+                    return cp.asnumpy(frame_array) if as_numpy else frame_array
+            except ImportError:
+                pass
+        
+        # Handle NumPy arrays (or fallback from GPU check)
+        if isinstance(frame_array, np.ndarray):
             return frame_array
-        else: # Should not happen if pool stores np or cp arrays
-            logger.error(f"Unexpected array type in deque: {type(frame_array)}")
-            return None
+        
+        # Unexpected array type
+        logger.error(f"Unexpected array type in deque: {type(frame_array)}")
+        return None
 
     def _capture_thread_func( # Renamed from __capture
         self, region: Tuple[int, int, int, int], target_fps: int = 60, video_mode: bool = False
@@ -957,10 +966,17 @@ class ScreenCapture:
             self.channel_size,
         )
         with self.__lock:
-            if self.nvidia_gpu and CUPY_AVAILABLE:
-                self.__frame_buffer = cp.ndarray(
-                    (self.max_buffer_len, *frame_shape), dtype=cp.uint8
-                )
+            if self.nvidia_gpu:
+                try:
+                    import cupy as cp
+                    self.__frame_buffer = cp.ndarray(
+                        (self.max_buffer_len, *frame_shape), dtype=cp.uint8
+                    )
+                except ImportError:
+                    logger.warning("CuPy not available, using numpy array instead")
+                    self.__frame_buffer = np.ndarray(
+                        (self.max_buffer_len, *frame_shape), dtype=np.uint8
+                    )
             else:
                 self.__frame_buffer = np.ndarray(
                     (self.max_buffer_len, *frame_shape), dtype=np.uint8

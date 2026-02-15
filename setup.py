@@ -33,7 +33,9 @@ setup(
     ],
     extras_require={
         "cv2": ["opencv-python>=4.5.0"],
-        "gpu": ["cupy-cuda11x>=11.0.0", "opencv-python>=4.5.0"],
+        "gpu_cuda11": ["cupy-cuda11x>=11.0.0", "opencv-python>=4.5.0"],
+        "gpu_cuda12": ["cupy-cuda12x>=12.0.0", "opencv-python>=4.5.0"],
+        "gpu": ["cupy-cuda12x>=12.0.0", "opencv-python>=4.5.0"],  # Default to CUDA 12
         "pil": ["pillow>=8.0.0"],
         "all": [
             "numpy>=1.19.0",
