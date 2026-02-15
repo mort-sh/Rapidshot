@@ -158,15 +158,16 @@ class NumpyProcessor:
 
     def process(self, rect, width, height, region, rotation_angle, output_buffer=None):
         """
-        Process a frame.
+        Process a frame from a mapped rectangle, applying color conversion and rotation as configured.
         
         Args:
-            rect: Mapped rectangle
-            width: Width
-            height: Height
-            region: Region to capture
-            rotation_angle: Rotation angle
-            output_buffer: Pre-allocated NumPy array to store the processed frame.
+            rect: Mapped rectangle containing frame data
+            width: Frame width in pixels
+            height: Frame height in pixels
+            region: Region to capture as (left, top, right, bottom) tuple
+            rotation_angle: Rotation angle in degrees (0, 90, 180, or 270)
+            output_buffer: Optional pre-allocated NumPy array to store the processed frame.
+                          Must have shape (region_height, region_width, 4) if provided.
             
         Returns:
             tuple: (processed_array, is_pooled_buffer_valid) where processed_array is the
