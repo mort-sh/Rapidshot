@@ -88,3 +88,11 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
+
+[tool.uv.sources]
+rapidshot = { workspace = true }
+
+[dependency-groups]
+gpu-cuda12 = [
+    "rapidshot",
+]
