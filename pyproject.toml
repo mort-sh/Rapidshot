@@ -39,6 +39,7 @@ dependencies = [
     "pynput>=1.8.1",
     "av>=12.3.0",
     "setuptools>=75.3.4",
+    "wmi>=1.5.1",
 ]
 
 [project.optional-dependencies]
