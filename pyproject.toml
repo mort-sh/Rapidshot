@@ -67,8 +67,8 @@ docs = [
 "Source" = "https://github.com/Zaatra/Rapidshot"
 "Documentation" = "https://github.com/Zaatra/Rapidshot"
 
-[tool.setuptools]
-packages = ["rapidshot"]
+[tool.setuptools.packages.find]
+include = ["rapidshot*"]
 
 [tool.black]
 line-length = 100
