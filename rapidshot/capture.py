@@ -629,7 +629,7 @@ class ScreenCapture:
                     frame_needs_release = False
 
                 mapped_rect = self._stagesurf.map()
-                final_array, is_pooled_buffer_still_valid = self._processor.process(
+                final_array = self._processor.process(
                     mapped_rect,
                     region_width,
                     region_height,
@@ -644,7 +644,11 @@ class ScreenCapture:
                     self._duplicator.release_frame()
 
             if can_use_pool and pooled_buffer_wrapper:
-                if is_pooled_buffer_still_valid:
+                # Check if the returned array is the same object as the pooled buffer
+                # If it is, we can return the pooled buffer wrapper
+                # Otherwise, the processor created a new array (due to shape changes from rotation/conversion)
+                # and we should release the pooled buffer and return the new array
+                if final_array is output_array_for_region:
                     return pooled_buffer_wrapper
                 pooled_buffer_wrapper.release()
                 return final_array

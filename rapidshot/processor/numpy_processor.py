@@ -261,14 +261,14 @@ class NumpyProcessor:
                     else: # Shape is same, but current_array is already a new buffer
                         current_array = rotated_array # Update current_array to be the rotated one
 
-            return current_array, is_still_pooled_buffer
+            return current_array
 
         except Exception as e:
             logger.error(f"Frame processing error in NumpyProcessor: {e}")
-            # Ensure output_buffer is zeroed out in case of any error, then return it with False flag
+            # Ensure output_buffer is zeroed out in case of any error, then return it
             if output_buffer is not None and hasattr(output_buffer, 'fill'):
                 try:
                     output_buffer.fill(0)
                 except Exception as fill_e:
                     logger.error(f"Error filling output_buffer after another error: {fill_e}")
-            return output_buffer, False # Indicate buffer might be invalid or is not the result
+            return output_buffer # Return the buffer even if error occurred

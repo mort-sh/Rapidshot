@@ -324,7 +324,7 @@ class CupyProcessor:
                     else: # Shape is same, but current_array is already a new buffer
                         current_array = rotated_array 
 
-            return current_array, is_still_pooled_buffer
+            return current_array
 
         except Exception as e:
             error_msg = f"Error processing frame with CuPy: {e}"
@@ -334,4 +334,4 @@ class CupyProcessor:
                     output_buffer.fill(0)
                 except Exception as fill_e:
                     logger.error(f"Error filling CuPy output_buffer after another error: {fill_e}")
-            return output_buffer, False # Indicate buffer might be invalid
+            return output_buffer # Return the buffer even if error occurred
