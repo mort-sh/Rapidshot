@@ -158,117 +158,116 @@ class NumpyProcessor:
 
     def process(self, rect, width, height, region, rotation_angle, output_buffer=None):
         """
-        Process a frame with robust error handling.
+        Process a frame from a mapped rectangle, applying color conversion and rotation as configured.
         
         Args:
-            rect: Mapped rectangle
-            width: Width
-            height: Height
-            region: Region to capture
-            rotation_angle: Rotation angle,
-            output_buffer: Pre-allocated NumPy array to store the processed frame.
+            rect: Mapped rectangle containing frame data
+            width: Frame width in pixels
+            height: Frame height in pixels
+            region: Region to capture as (left, top, right, bottom) tuple
+            rotation_angle: Rotation angle in degrees (0, 90, 180, or 270)
+            output_buffer: Optional pre-allocated NumPy array to store the processed frame.
+                          Must have shape (region_height, region_width, 4) if provided.
+            
+        Returns:
+            tuple: (processed_array, is_pooled_buffer_valid) where processed_array is the
+                   resulting frame and is_pooled_buffer_valid indicates if output_buffer
+                   was reused or a new array was allocated.
+                   
+        Raises:
+            ValueError: If rect is invalid, region is out of bounds, or output_buffer 
+                       shape does not match the expected region shape.
         """
         # Phase 1: Get data into the output buffer (no rotation, no color conversion yet)
-        try:
-            if not hasattr(rect, 'pBits') or not rect.pBits:
-                raise ValueError(f"Invalid rect or pBits, cannot process. Rect type: {type(rect)}")
+        if not hasattr(rect, 'pBits') or not rect.pBits:
+            raise ValueError(f"Invalid rect or pBits, cannot process. Rect type: {type(rect)}")
 
-            pitch = int(rect.Pitch)
-            src_address = pointer_to_address(rect.pBits)
-            if src_address is None:
-                raise ValueError("Mapped rect does not contain a valid pointer")
+        pitch = int(rect.Pitch)
+        src_address = pointer_to_address(rect.pBits)
+        if src_address is None:
+            raise ValueError("Mapped rect does not contain a valid pointer")
 
-            region_left, region_top, region_right, region_bottom = region
-            if not (0 <= region_left < region_right <= width) or not (0 <= region_top < region_bottom <= height):
-                raise ValueError(f"Region {region} is outside of the frame dimensions {(width, height)}")
+        region_left, region_top, region_right, region_bottom = region
+        if not (0 <= region_left < region_right <= width) or not (0 <= region_top < region_bottom <= height):
+            raise ValueError(f"Region {region} is outside of the frame dimensions {(width, height)}")
 
-            region_height = region_bottom - region_top
-            region_width = region_right - region_left
+        region_height = region_bottom - region_top
+        region_width = region_right - region_left
 
-            if output_buffer is None:
-                output_buffer = np.empty((region_height, region_width, 4), dtype=np.uint8)
-                is_pooled_buffer = False
-            else:
-                is_pooled_buffer = True
-                if output_buffer.shape[:2] != (region_height, region_width) or output_buffer.shape[2] != 4:
-                    raise ValueError(
-                        f"Output buffer shape {output_buffer.shape} does not match region shape "
-                        f"({region_height}, {region_width}, 4)."
-                    )
+        if output_buffer is None:
+            output_buffer = np.empty((region_height, region_width, 4), dtype=np.uint8)
+            is_pooled_buffer = False
+        else:
+            is_pooled_buffer = True
+            if output_buffer.shape[:2] != (region_height, region_width) or output_buffer.shape[2] != 4:
+                raise ValueError(
+                    f"Output buffer shape {output_buffer.shape} does not match region shape "
+                    f"({region_height}, {region_width}, 4)."
+                )
 
-            row_bytes = region_width * 4
-            total_pitch_bytes = pitch * region_height
-            src_buffer = (ctypes.c_ubyte * total_pitch_bytes).from_address(src_address + region_top * pitch)
-            src_view = np.ctypeslib.as_array(src_buffer).reshape(region_height, pitch)
+        row_bytes = region_width * 4
+        total_pitch_bytes = pitch * region_height
+        src_buffer = (ctypes.c_ubyte * total_pitch_bytes).from_address(src_address + region_top * pitch)
+        src_view = np.ctypeslib.as_array(src_buffer).reshape(region_height, pitch)
 
-            dest_view = output_buffer.view(np.uint8).reshape(region_height, region_width * 4)
+        dest_view = output_buffer.view(np.uint8).reshape(region_height, region_width * 4)
 
-            if pitch == row_bytes and region_left == 0:
-                dest_view[:] = src_view[:, :row_bytes]
-            else:
-                start = region_left * 4
-                end = start + row_bytes
-                for row in range(region_height):
-                    dest_view[row, :] = src_view[row, start:end]
+        if pitch == row_bytes and region_left == 0:
+            dest_view[:] = src_view[:, :row_bytes]
+        else:
+            start = region_left * 4
+            end = start + row_bytes
+            for row in range(region_height):
+                dest_view[row, :] = src_view[row, start:end]
 
 
-            # Phase 2: Color Conversion and Rotation
-            current_array = output_buffer # Start with the pooled buffer
-            is_still_pooled_buffer = is_pooled_buffer
+        # Phase 2: Color Conversion and Rotation
+        current_array = output_buffer # Start with the pooled buffer
+        is_still_pooled_buffer = is_pooled_buffer
 
-            # Color Conversion
-            # self.color_mode is None if original was 'BGRA' and no conversion is needed.
-            # output_buffer is already BGRA (4 channels).
-            if self.color_mode is not None: # Not 'BGRA', so conversion is intended
-                # process_cvtcolor expects BGRA input if it's doing standard conversions.
-                # output_buffer is BGRA, so that's fine.
-                # It returns a new array (or potentially a view for NumPy slicing based ones)
-                converted_array = self.process_cvtcolor(current_array) # Pass current_array directly
+        # Color Conversion
+        # self.color_mode is None if original was 'BGRA' and no conversion is needed.
+        # output_buffer is already BGRA (4 channels).
+        if self.color_mode is not None: # Not 'BGRA', so conversion is intended
+            # process_cvtcolor expects BGRA input if it's doing standard conversions.
+            # output_buffer is BGRA, so that's fine.
+            # It returns a new array (or potentially a view for NumPy slicing based ones)
+            converted_array = self.process_cvtcolor(current_array) # Pass current_array directly
 
-                if converted_array.shape[0] == current_array.shape[0] and \
-                   converted_array.shape[1] == current_array.shape[1]:
-                    # If number of channels changed (e.g. to BGR or GRAY)
-                    if converted_array.shape[2] != current_array.shape[2]:
-                        # We cannot use the original output_buffer if channel count changes.
-                        # Create a new array for the converted result.
-                        current_array = converted_array # This is a new array.
-                        is_still_pooled_buffer = False
-                    elif converted_array.base is not current_array.base and converted_array is not current_array : 
-                        # It's a copy with the same shape (e.g. BGRA to RGBA via NumPy slice)
-                        # or OpenCV conversion that maintained shape.
-                        # Copy data back to the pooled buffer if it's still the active one.
-                        if is_still_pooled_buffer:
-                             current_array[:] = converted_array
-                        # else: current_array is already a new buffer, no need to copy to output_buffer
-                else: # Shape (height/width) changed during color conversion (should not happen with current cvtcolor)
-                    logger.warning("Color conversion changed height/width, which is unexpected.")
-                    current_array = converted_array
+            if converted_array.shape[0] == current_array.shape[0] and \
+               converted_array.shape[1] == current_array.shape[1]:
+                # If number of channels changed (e.g. to BGR or GRAY)
+                if converted_array.shape[2] != current_array.shape[2]:
+                    # We cannot use the original output_buffer if channel count changes.
+                    # Create a new array for the converted result.
+                    current_array = converted_array # This is a new array.
                     is_still_pooled_buffer = False
-            
-            # Rotation
-            if rotation_angle != 0:
-                k = (rotation_angle // 90) % 4
-                if k != 0:
-                    rotated_array = np.rot90(current_array, k=k) # axes=(0,1) is default for 2D, need (1,0) for image width/height swap
-                    
-                    # Check if shape changed due to rotation
-                    if rotated_array.shape[0] != current_array.shape[0] or \
-                       rotated_array.shape[1] != current_array.shape[1]:
-                        current_array = rotated_array
-                        is_still_pooled_buffer = False # Shape changed, cannot use original pooled buffer
-                    elif is_still_pooled_buffer : # Shape is same, and we are still using the pooled buffer
-                        current_array[:] = rotated_array # Copy back to pooled buffer
-                    else: # Shape is same, but current_array is already a new buffer
-                        current_array = rotated_array # Update current_array to be the rotated one
+                elif converted_array.base is not current_array.base and converted_array is not current_array : 
+                    # It's a copy with the same shape (e.g. BGRA to RGBA via NumPy slice)
+                    # or OpenCV conversion that maintained shape.
+                    # Copy data back to the pooled buffer if it's still the active one.
+                    if is_still_pooled_buffer:
+                         current_array[:] = converted_array
+                    # else: current_array is already a new buffer, no need to copy to output_buffer
+            else: # Shape (height/width) changed during color conversion (should not happen with current cvtcolor)
+                logger.warning("Color conversion changed height/width, which is unexpected.")
+                current_array = converted_array
+                is_still_pooled_buffer = False
+        
+        # Rotation
+        if rotation_angle != 0:
+            k = (rotation_angle // 90) % 4
+            if k != 0:
+                rotated_array = np.rot90(current_array, k=k) # axes=(0,1) is default for 2D, need (1,0) for image width/height swap
+                
+                # Check if shape changed due to rotation
+                if rotated_array.shape[0] != current_array.shape[0] or \
+                   rotated_array.shape[1] != current_array.shape[1]:
+                    current_array = rotated_array
+                    is_still_pooled_buffer = False # Shape changed, cannot use original pooled buffer
+                elif is_still_pooled_buffer : # Shape is same, and we are still using the pooled buffer
+                    current_array[:] = rotated_array # Copy back to pooled buffer
+                else: # Shape is same, but current_array is already a new buffer
+                    current_array = rotated_array # Update current_array to be the rotated one
 
-            return current_array, is_still_pooled_buffer
-
-        except Exception as e:
-            logger.error(f"Frame processing error in NumpyProcessor: {e}")
-            # Ensure output_buffer is zeroed out in case of any error, then return it with False flag
-            if output_buffer is not None and hasattr(output_buffer, 'fill'):
-                try:
-                    output_buffer.fill(0)
-                except Exception as fill_e:
-                    logger.error(f"Error filling output_buffer after another error: {fill_e}")
-            return output_buffer, False # Indicate buffer might be invalid or is not the result
+        return current_array, is_still_pooled_buffer

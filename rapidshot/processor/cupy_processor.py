@@ -204,134 +204,133 @@ class CupyProcessor:
 
     def process(self, rect, width, height, region, rotation_angle, output_buffer=None):
         """
-        Process a frame using GPU acceleration.
+        Process a frame from a mapped rectangle using GPU acceleration, applying color conversion and rotation as configured.
         
         Args:
-            rect: Mapped rectangle
-            width: Width
-            height: Height
-            region: Region to capture
-            rotation_angle: Rotation angle,
-            output_buffer: Pre-allocated CuPy array to store the processed frame.
+            rect: Mapped rectangle containing frame data
+            width: Frame width in pixels
+            height: Frame height in pixels
+            region: Region to capture as (left, top, right, bottom) tuple
+            rotation_angle: Rotation angle in degrees (0, 90, 180, or 270)
+            output_buffer: Optional pre-allocated CuPy array to store the processed frame.
+                          Must have shape (region_height, region_width, 4) if provided.
+            
+        Returns:
+            tuple: (processed_array, is_pooled_buffer_valid) where processed_array is the
+                   resulting frame and is_pooled_buffer_valid indicates if output_buffer
+                   was reused or a new array was allocated.
+                   
+        Raises:
+            ValueError: If rect is invalid, region is out of bounds, or output_buffer 
+                       shape does not match the expected region shape.
         """
         # Phase 1: Get data into the output buffer (no rotation, no color conversion yet)
         # Import numpy for ctypes bridge, cupy (self.cp) is already imported
         import numpy as np
 
-        try:
-            if not hasattr(rect, 'pBits') or not rect.pBits:
-                raise ValueError(f"Invalid rect or pBits, cannot process. Rect type: {type(rect)}")
+        if not hasattr(rect, 'pBits') or not rect.pBits:
+            raise ValueError(f"Invalid rect or pBits, cannot process. Rect type: {type(rect)}")
 
-            pitch = int(rect.Pitch)
-            src_address = pointer_to_address(rect.pBits)
-            if src_address is None:
-                raise ValueError("Mapped rect does not contain a valid pointer")
+        pitch = int(rect.Pitch)
+        src_address = pointer_to_address(rect.pBits)
+        if src_address is None:
+            raise ValueError("Mapped rect does not contain a valid pointer")
 
-            left, top, right, bottom = region
-            if not (0 <= left < right <= width) or not (0 <= top < bottom <= height):
-                raise ValueError(f"Region {region} is outside of the frame dimensions {(width, height)}")
+        left, top, right, bottom = region
+        if not (0 <= left < right <= width) or not (0 <= top < bottom <= height):
+            raise ValueError(f"Region {region} is outside of the frame dimensions {(width, height)}")
 
-            region_height = bottom - top
-            region_width = right - left
+        region_height = bottom - top
+        region_width = right - left
 
-            if output_buffer is None:
-                output_buffer = self.cp.empty((region_height, region_width, 4), dtype=self.cp.uint8)
-                is_pooled_buffer = False
-            else:
-                is_pooled_buffer = True
-                if output_buffer.shape[:2] != (region_height, region_width) or output_buffer.shape[2] != 4:
-                    raise ValueError(
-                        f"Output buffer shape {output_buffer.shape} does not match region shape "
-                        f"({region_height}, {region_width}, 4)."
-                    )
+        if output_buffer is None:
+            output_buffer = self.cp.empty((region_height, region_width, 4), dtype=self.cp.uint8)
+            is_pooled_buffer = False
+        else:
+            is_pooled_buffer = True
+            if output_buffer.shape[:2] != (region_height, region_width) or output_buffer.shape[2] != 4:
+                raise ValueError(
+                    f"Output buffer shape {output_buffer.shape} does not match region shape "
+                    f"({region_height}, {region_width}, 4)."
+                )
 
-            row_bytes = region_width * 4
-            total_pitch_bytes = pitch * region_height
-            src_buffer = (ctypes.c_ubyte * total_pitch_bytes).from_address(src_address + top * pitch)
-            src_view = np.ctypeslib.as_array(src_buffer).reshape(region_height, pitch)
+        row_bytes = region_width * 4
+        total_pitch_bytes = pitch * region_height
+        src_buffer = (ctypes.c_ubyte * total_pitch_bytes).from_address(src_address + top * pitch)
+        src_view = np.ctypeslib.as_array(src_buffer).reshape(region_height, pitch)
 
-            if pitch == row_bytes and left == 0:
-                cpu_region = src_view[:, :row_bytes]
-            else:
-                start = left * 4
-                end = start + row_bytes
-                cpu_region = np.empty((region_height, row_bytes), dtype=np.uint8)
-                for row in range(region_height):
-                    cpu_region[row, :] = src_view[row, start:end]
+        if pitch == row_bytes and left == 0:
+            cpu_region = src_view[:, :row_bytes]
+        else:
+            start = left * 4
+            end = start + row_bytes
+            cpu_region = np.empty((region_height, row_bytes), dtype=np.uint8)
+            for row in range(region_height):
+                cpu_region[row, :] = src_view[row, start:end]
 
-            cpu_region = cpu_region.reshape(region_height, region_width, 4)
+        cpu_region = cpu_region.reshape(region_height, region_width, 4)
 
-            if hasattr(output_buffer, "set"):
-                output_buffer.set(cpu_region)
-            else:
-                output_buffer[...] = cpu_region
+        if hasattr(output_buffer, "set"):
+            output_buffer.set(cpu_region)
+        else:
+            output_buffer[...] = cpu_region
 
 
-            # Phase 2: Color Conversion and Rotation
-            current_array = output_buffer # Start with the pooled buffer (already has BGRA data)
-            is_still_pooled_buffer = is_pooled_buffer
+        # Phase 2: Color Conversion and Rotation
+        current_array = output_buffer # Start with the pooled buffer (already has BGRA data)
+        is_still_pooled_buffer = is_pooled_buffer
 
-            # Color Conversion
-            if self.color_mode is not None: # Not 'BGRA', so conversion is intended
-                # process_cvtcolor expects a CuPy array if _has_cucv, or NumPy if falling back to cv2
-                # Since current_array is CuPy, this is fine for cuCV.
-                # For OpenCV fallback, process_cvtcolor would need a NumPy array.
-                # Let's assume process_cvtcolor is adapted or handles CuPy array input.
-                # For now, we pass current_array. If it's OpenCV, it might involve implicit DtoH copy.
-                
-                # If using OpenCV (non-cuCV path), it's better to convert from the CPU numpy array
-                # *before* copying to output_buffer, or copy output_buffer to CPU, convert, copy back.
-                # This logic assumes process_cvtcolor can handle a CuPy array and returns a CuPy array.
-                
-                temp_for_conversion = current_array
-                # If not using cuCV, and process_cvtcolor expects NumPy, we need a DtoH copy
-                if not self._has_cucv:
-                    logger.debug("CupyProcessor: Using OpenCV for color conversion, involves DtoH copy.")
-                    temp_for_conversion = self.cp.asnumpy(current_array)
+        # Color Conversion
+        if self.color_mode is not None: # Not 'BGRA', so conversion is intended
+            # process_cvtcolor expects a CuPy array if _has_cucv, or NumPy if falling back to cv2
+            # Since current_array is CuPy, this is fine for cuCV.
+            # For OpenCV fallback, process_cvtcolor would need a NumPy array.
+            # Let's assume process_cvtcolor is adapted or handles CuPy array input.
+            # For now, we pass current_array. If it's OpenCV, it might involve implicit DtoH copy.
+            
+            # If using OpenCV (non-cuCV path), it's better to convert from the CPU numpy array
+            # *before* copying to output_buffer, or copy output_buffer to CPU, convert, copy back.
+            # This logic assumes process_cvtcolor can handle a CuPy array and returns a CuPy array.
+            
+            temp_for_conversion = current_array
+            # If not using cuCV, and process_cvtcolor expects NumPy, we need a DtoH copy
+            if not self._has_cucv:
+                logger.debug("CupyProcessor: Using OpenCV for color conversion, involves DtoH copy.")
+                temp_for_conversion = self.cp.asnumpy(current_array)
 
-                converted_array = self.process_cvtcolor(temp_for_conversion) # process_cvtcolor returns array
+            converted_array = self.process_cvtcolor(temp_for_conversion) # process_cvtcolor returns array
 
-                # If OpenCV was used, converted_array is NumPy, convert back to CuPy
-                if not self._has_cucv and isinstance(converted_array, np.ndarray):
-                    converted_array = self.cp.asarray(converted_array)
+            # If OpenCV was used, converted_array is NumPy, convert back to CuPy
+            if not self._has_cucv and isinstance(converted_array, np.ndarray):
+                converted_array = self.cp.asarray(converted_array)
 
-                if converted_array.shape[0] == current_array.shape[0] and \
-                   converted_array.shape[1] == current_array.shape[1]:
-                    if converted_array.shape[2] != current_array.shape[2]: # Channel change
-                        current_array = converted_array
-                        is_still_pooled_buffer = False
-                    elif converted_array.data.ptr != current_array.data.ptr: # Different memory block
-                        if is_still_pooled_buffer:
-                            current_array[:] = converted_array
-                        # else current_array is already new, no need to copy to original output_buffer
-                else: # Height/width changed
-                    logger.warning("CuPy color conversion changed height/width, which is unexpected.")
+            if converted_array.shape[0] == current_array.shape[0] and \
+               converted_array.shape[1] == current_array.shape[1]:
+                if converted_array.shape[2] != current_array.shape[2]: # Channel change
                     current_array = converted_array
                     is_still_pooled_buffer = False
-            
-            # Rotation
-            if rotation_angle != 0:
-                k = (rotation_angle // 90) % 4
-                if k != 0:
-                    rotated_array = self.cp.rot90(current_array, k=k)
-                    
-                    if rotated_array.shape[0] != current_array.shape[0] or \
-                       rotated_array.shape[1] != current_array.shape[1]:
-                        current_array = rotated_array
-                        is_still_pooled_buffer = False
-                    elif is_still_pooled_buffer:
-                        current_array[:] = rotated_array
-                    else: # Shape is same, but current_array is already a new buffer
-                        current_array = rotated_array 
+                elif converted_array.data.ptr != current_array.data.ptr: # Different memory block
+                    if is_still_pooled_buffer:
+                        current_array[:] = converted_array
+                    # else current_array is already new, no need to copy to original output_buffer
+            else: # Height/width changed
+                logger.warning("CuPy color conversion changed height/width, which is unexpected.")
+                current_array = converted_array
+                is_still_pooled_buffer = False
+        
+        # Rotation
+        if rotation_angle != 0:
+            k = (rotation_angle // 90) % 4
+            if k != 0:
+                rotated_array = self.cp.rot90(current_array, k=k)
+                
+                if rotated_array.shape[0] != current_array.shape[0] or \
+                   rotated_array.shape[1] != current_array.shape[1]:
+                    current_array = rotated_array
+                    is_still_pooled_buffer = False
+                elif is_still_pooled_buffer:
+                    current_array[:] = rotated_array
+                else: # Shape is same, but current_array is already a new buffer
+                    current_array = rotated_array 
 
-            return current_array, is_still_pooled_buffer
-
-        except Exception as e:
-            error_msg = f"Error processing frame with CuPy: {e}"
-            logger.error(error_msg)
-            if output_buffer is not None and hasattr(output_buffer, 'fill'):
-                try:
-                    output_buffer.fill(0)
-                except Exception as fill_e:
-                    logger.error(f"Error filling CuPy output_buffer after another error: {fill_e}")
-            return output_buffer, False # Indicate buffer might be invalid
+        return current_array, is_still_pooled_buffer
