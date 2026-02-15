@@ -13,6 +13,7 @@ import logging
 import time
 from collections import deque
 from threading import Event, Lock
+import re
 
 import rapidshot  # Updated library name
 import av
@@ -20,6 +21,24 @@ from pynput import keyboard
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+def _select_capture_device() -> int:
+    """
+    Pick an NVIDIA-backed capture device if available, otherwise fall back to device 0.
+    """
+    device_info = rapidshot.device_info()
+    for line in device_info.splitlines():
+        if "nvidia" not in line.lower():
+            continue
+        match = re.search(r"Device\[(\d+)\]", line)
+        if match:
+            selected_idx = int(match.group(1))
+            logging.info("Selected NVIDIA capture device index: %s", selected_idx)
+            return selected_idx
+
+    logging.info("No NVIDIA device line found in device_info(); falling back to device index 0.")
+    return 0
 
 
 class InstantReplayRecorder:
@@ -49,7 +68,12 @@ class InstantReplayRecorder:
         self.container, self.stream = self._create_container()
 
         # Initialize screen capture via rapidshot
-        self.screencapture = rapidshot.create(output_color="RGB")
+        device_idx = _select_capture_device()
+        self.screencapture = rapidshot.create(
+            device_idx=device_idx,
+            output_color="RGB",
+            nvidia_gpu=True,
+        )
         self.screencapture.start(target_fps=self.target_fps, video_mode=True)
 
         logging.info("InstantReplayRecorder initialized. Press Ctrl+Alt+H to save replay, Ctrl+Alt+I to stop.")
