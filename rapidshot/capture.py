@@ -799,18 +799,17 @@ class ScreenCapture:
             try:
                 import cupy as cp
                 if isinstance(frame_array, cp.ndarray):
-                    if as_numpy:
-                        return cp.asnumpy(frame_array)
-                    else:
-                        return frame_array # Return CuPy array directly
+                    return cp.asnumpy(frame_array) if as_numpy else frame_array
             except ImportError:
                 pass
         
-        if isinstance(frame_array, np.ndarray): # Already a NumPy array
+        # Handle NumPy arrays (or fallback from GPU check)
+        if isinstance(frame_array, np.ndarray):
             return frame_array
-        else: # Should not happen if pool stores np or cp arrays
-            logger.error(f"Unexpected array type in deque: {type(frame_array)}")
-            return None
+        
+        # Unexpected array type
+        logger.error(f"Unexpected array type in deque: {type(frame_array)}")
+        return None
 
     def _capture_thread_func( # Renamed from __capture
         self, region: Tuple[int, int, int, int], target_fps: int = 60, video_mode: bool = False

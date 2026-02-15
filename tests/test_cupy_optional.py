@@ -28,12 +28,16 @@ class TestCupyOptional(unittest.TestCase):
                 break
             
             # Check for top-level cupy imports (not in try-except)
+            # Skip comments and empty lines first
+            stripped = line.strip()
+            if not stripped or stripped.startswith('#'):
+                continue
+                
             if in_main_imports and ('import cupy' in line or 'from cupy' in line):
-                if not line.strip().startswith('#'):
-                    # Make sure it's indented (inside a function or try-except)
-                    indent = len(line) - len(line.lstrip())
-                    self.assertGreater(indent, 0, 
-                        f"Found top-level CuPy import at line {i+1}: {line.strip()}")
+                # Make sure it's indented (inside a function or try-except)
+                indent = len(line) - len(line.lstrip())
+                self.assertGreater(indent, 0, 
+                    f"Found top-level CuPy import at line {i+1}: {line.strip()}")
     
     def test_no_cupy_available_constant(self):
         """Verify that CUPY_AVAILABLE constant is not set at module level."""
@@ -59,13 +63,17 @@ class TestCupyOptional(unittest.TestCase):
     def test_lazy_cupy_imports_present(self):
         """Verify that CuPy imports are present but lazy-loaded."""
         with open('rapidshot/capture.py', 'r') as f:
-            content = f.read()
+            lines = f.readlines()
         
         # Check that there are lazy imports of cupy (indented, inside try blocks or functions)
         lazy_imports = 0
-        lines = content.split('\n')
         for i, line in enumerate(lines):
-            if 'import cupy' in line:
+            stripped = line.strip()
+            # Skip comments and empty lines
+            if not stripped or stripped.startswith('#'):
+                continue
+            # Check for actual import statements (not in comments or strings)
+            if stripped.startswith('import cupy') or stripped.startswith('from cupy'):
                 indent = len(line) - len(line.lstrip())
                 if indent > 0:  # It's indented, so it's lazy
                     lazy_imports += 1
