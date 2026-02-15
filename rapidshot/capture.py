@@ -519,7 +519,12 @@ class ScreenCapture:
                 temp_region_w = region[2] - region[0]
                 temp_shape = (temp_region_h, temp_region_w, 4)
                 if self.nvidia_gpu:
-                    output_array_for_region = cp.empty(temp_shape, dtype=cp.uint8)
+                    try:
+                        import cupy as cp
+                        output_array_for_region = cp.empty(temp_shape, dtype=cp.uint8)
+                    except ImportError:
+                        logger.warning("CuPy not available for GPU temp buffer, falling back to numpy")
+                        output_array_for_region = np.empty(temp_shape, dtype=np.uint8)
                 else:
                     output_array_for_region = np.empty(temp_shape, dtype=np.uint8)
 
