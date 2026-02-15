@@ -4,14 +4,13 @@ from typing import List
 from collections import defaultdict
 import comtypes
 from rapidshot._libs.dxgi import (
+    CreateLatestDXGIFactory,
     IDXGIFactory1,
-    IDXGIFactory6,  # Added this import
+    IDXGIFactory6,
     IDXGIAdapter1,
     IDXGIOutput1,
     DXGI_ERROR_NOT_FOUND,
-    # Add missing GPU preference constants
     DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
-    DXGI_GPU_PREFERENCE_UNSPECIFIED,
 )
 from rapidshot._libs.user32 import (
     DISPLAY_DEVICE,
@@ -24,30 +23,85 @@ from rapidshot._libs.user32 import (
 logger = logging.getLogger(__name__)
 
 
-def enum_dxgi_adapters() -> List[ctypes.POINTER(IDXGIAdapter1)]:
-    create_dxgi_factory = ctypes.windll.dxgi.CreateDXGIFactory1
-    create_dxgi_factory.argtypes = (comtypes.GUID, ctypes.POINTER(ctypes.c_void_p))
-    create_dxgi_factory.restype = ctypes.c_int32
-    pfactory = ctypes.c_void_p(0)
-    create_dxgi_factory(IDXGIFactory1._iid_, ctypes.byref(pfactory))
-    dxgi_factory = ctypes.POINTER(IDXGIFactory1)(pfactory.value)
+def _format_hresult(hr: int) -> str:
+    return f"0x{ctypes.c_uint32(hr).value:08X}"
+
+
+def _is_dxgi_not_found(com_error: comtypes.COMError) -> bool:
+    if not com_error.args:
+        return False
+    return ctypes.c_int32(com_error.args[0]).value == ctypes.c_int32(DXGI_ERROR_NOT_FOUND).value
+
+
+def _create_dxgi_factory1() -> ctypes.POINTER(IDXGIFactory1):
+    factory_ptr = ctypes.c_void_p()
+    hr = CreateLatestDXGIFactory(ctypes.byref(IDXGIFactory1._iid_), ctypes.byref(factory_ptr))
+    if ctypes.c_long(hr).value < 0 or not factory_ptr.value:
+        raise RuntimeError(f"Unable to create DXGI factory. HRESULT={_format_hresult(hr)}")
+    return ctypes.cast(factory_ptr, ctypes.POINTER(IDXGIFactory1))
+
+
+def _enum_adapters_with_factory1(
+    dxgi_factory: ctypes.POINTER(IDXGIFactory1),
+) -> List[ctypes.POINTER(IDXGIAdapter1)]:
     i = 0
-    p_adapters = list()
+    p_adapters: List[ctypes.POINTER(IDXGIAdapter1)] = []
     while True:
         try:
             p_adapter = ctypes.POINTER(IDXGIAdapter1)()
             dxgi_factory.EnumAdapters1(i, ctypes.byref(p_adapter))
+            if not bool(p_adapter):
+                logger.warning("EnumAdapters1 returned a null adapter pointer at index %d", i)
+                break
             p_adapters.append(p_adapter)
             i += 1
         except comtypes.COMError as ce:
-            if ctypes.c_int32(DXGI_ERROR_NOT_FOUND).value == ce.args[0]:
+            if _is_dxgi_not_found(ce):
                 break
-            else:
-                raise ce
+            raise
     return p_adapters
 
 
-def enum_dxgi_adapters_with_preference(gpu_preference=DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE) -> List[ctypes.POINTER(IDXGIAdapter1)]:
+def _enum_adapters_with_factory6(
+    dxgi_factory6: ctypes.POINTER(IDXGIFactory6),
+    gpu_preference: int,
+) -> List[ctypes.POINTER(IDXGIAdapter1)]:
+    p_adapters: List[ctypes.POINTER(IDXGIAdapter1)] = []
+    i = 0
+    while True:
+        try:
+            adapter_void = ctypes.c_void_p()
+            dxgi_factory6.EnumAdapterByGpuPreference(
+                i,
+                gpu_preference,
+                ctypes.byref(IDXGIAdapter1._iid_),
+                ctypes.byref(adapter_void),
+            )
+            if not adapter_void.value:
+                logger.warning(
+                    "EnumAdapterByGpuPreference returned a null adapter pointer at index %d", i
+                )
+                break
+            p_adapters.append(ctypes.cast(adapter_void, ctypes.POINTER(IDXGIAdapter1)))
+            i += 1
+        except comtypes.COMError as ce:
+            if _is_dxgi_not_found(ce):
+                break
+            raise
+    return p_adapters
+
+
+def enum_dxgi_adapters() -> List[ctypes.POINTER(IDXGIAdapter1)]:
+    dxgi_factory = _create_dxgi_factory1()
+    try:
+        return _enum_adapters_with_factory1(dxgi_factory)
+    finally:
+        dxgi_factory.Release()
+
+
+def enum_dxgi_adapters_with_preference(
+    gpu_preference=DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+) -> List[ctypes.POINTER(IDXGIAdapter1)]:
     """
     Enumerate DXGI adapters with a preference for high performance or power efficiency.
     Falls back to standard enumeration if DXGI 1.6 is not available.
@@ -58,50 +112,28 @@ def enum_dxgi_adapters_with_preference(gpu_preference=DXGI_GPU_PREFERENCE_HIGH_P
     Returns:
         List of adapter pointers
     """
-    # Try to create a DXGI 1.6 factory
+    dxgi_factory = _create_dxgi_factory1()
+    dxgi_factory6 = None
     try:
-        create_dxgi_factory = ctypes.windll.dxgi.CreateDXGIFactory1
-        create_dxgi_factory.argtypes = (comtypes.GUID, ctypes.POINTER(ctypes.c_void_p))
-        create_dxgi_factory.restype = ctypes.c_int32
-        pfactory = ctypes.c_void_p(0)
-        create_dxgi_factory(IDXGIFactory1._iid_, ctypes.byref(pfactory))
-        dxgi_factory = ctypes.POINTER(IDXGIFactory1)(pfactory.value)
-        
-        # Try to query for DXGI 1.6 factory
         try:
             dxgi_factory6 = dxgi_factory.QueryInterface(IDXGIFactory6)
-            p_adapters = list()
-            i = 0
-            
-            # Use GPU preference enumeration
-            while True:
-                try:
-                    p_adapter = ctypes.POINTER(IDXGIAdapter1)()
-                    dxgi_factory6.EnumAdapterByGpuPreference(
-                        i, 
-                        gpu_preference,
-                        IDXGIAdapter1._iid_,
-                        ctypes.byref(ctypes.cast(ctypes.byref(p_adapter), ctypes.POINTER(ctypes.c_void_p)))
-                    )
-                    p_adapters.append(p_adapter)
-                    i += 1
-                except comtypes.COMError as ce:
-                    if ctypes.c_int32(DXGI_ERROR_NOT_FOUND).value == ce.args[0]:
-                        break
-                    else:
-                        raise ce
-                        
+            p_adapters = _enum_adapters_with_factory6(dxgi_factory6, gpu_preference)
             logger.info(f"Enumerated {len(p_adapters)} adapters using DXGI 1.6 EnumAdapterByGpuPreference")
             return p_adapters
-            
-        except comtypes.COMError:
-            # DXGI 1.6 not available, fall back to standard enumeration
-            logger.info("DXGI 1.6 not available, falling back to standard adapter enumeration")
-            return enum_dxgi_adapters()
+
+        except comtypes.COMError as ce:
+            logger.info(
+                "DXGI 1.6 enumeration not available (HRESULT %s), using EnumAdapters1 fallback",
+                _format_hresult(ce.args[0]) if ce.args else "N/A",
+            )
+            return _enum_adapters_with_factory1(dxgi_factory)
     except Exception as e:
         logger.error(f"Failed to enumerate adapters with preference: {e}")
-        # Fall back to standard enumeration
-        return enum_dxgi_adapters()
+        return _enum_adapters_with_factory1(dxgi_factory)
+    finally:
+        if dxgi_factory6 is not None:
+            dxgi_factory6.Release()
+        dxgi_factory.Release()
 
 
 def enum_dxgi_outputs(

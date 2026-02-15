@@ -302,195 +302,119 @@ def test_dxgi_factory_creation():
     """Test DXGI factory creation to verify basics of DirectX initialization"""
     print_header("DXGI FACTORY CREATION")
     
-    # Try to create DXGI factory with progressively newer versions
+    def _format_hresult(hr):
+        return f"0x{ctypes.c_uint32(hr).value:08X}"
+
+    from rapidshot._libs.dxgi import (
+        IDXGIFactory1 as RS_IDXGIFactory1,
+        IDXGIAdapter1 as RS_IDXGIAdapter1,
+        DXGI_ADAPTER_DESC1 as RS_DXGI_ADAPTER_DESC1,
+        DXGI_ERROR_NOT_FOUND as RS_DXGI_ERROR_NOT_FOUND,
+    )
+
+    # CreateDXGIFactory6 is not a dxgi.dll export; modern factory creation uses CreateDXGIFactory2.
     factory_versions = [
-        {"name": "DXGI 1.6 (CreateDXGIFactory6)", "function": "CreateDXGIFactory6", "guid": "{c1b6694f-ff09-44a9-b03c-77900a0a1d17}"},
-        {"name": "DXGI 1.4 (CreateDXGIFactory2)", "function": "CreateDXGIFactory2", "guid": "{1bc6ea02-ef36-464f-bf0c-21ca39e5168a}"},
-        {"name": "DXGI 1.1 (CreateDXGIFactory1)", "function": "CreateDXGIFactory1", "guid": "{770aae78-f26f-4dba-a829-253c83d1b387}"},
-        {"name": "DXGI 1.0 (CreateDXGIFactory)", "function": "CreateDXGIFactory", "guid": "{7b7166ec-21c7-44ae-b21a-c9ae321ae369}"},
+        {"name": "DXGI 1.2+ (CreateDXGIFactory2)", "function": "CreateDXGIFactory2", "flags": 0},
+        {"name": "DXGI 1.1 (CreateDXGIFactory1)", "function": "CreateDXGIFactory1"},
+        {"name": "DXGI 1.0 (CreateDXGIFactory)", "function": "CreateDXGIFactory"},
     ]
-    
-    factory_created = False
-    factory_handle = None
+
+    factory_ptr = ctypes.c_void_p(0)
     factory_version = None
-    
+
     for version in factory_versions:
         try:
             print(f"Trying {version['name']}...")
             create_factory = getattr(ctypes.windll.dxgi, version["function"], None)
-            
             if create_factory is None:
                 print_result("warn", f"{version['function']} not found in dxgi.dll")
                 continue
-                
+
             create_factory.restype = comtypes.HRESULT
-            create_factory.argtypes = [
-                ctypes.POINTER(comtypes.GUID),
-                ctypes.POINTER(ctypes.c_void_p)
-            ]
-            
-            factory_ptr = ctypes.c_void_p(0)
-            guid = comtypes.GUID(version["guid"])
-            
-            hr = create_factory(ctypes.byref(guid), ctypes.byref(factory_ptr))
-            
-            if hr == 0 and factory_ptr.value:  # S_OK
+            if version["function"] == "CreateDXGIFactory2":
+                create_factory.argtypes = [
+                    wintypes.UINT,
+                    ctypes.POINTER(comtypes.GUID),
+                    ctypes.POINTER(ctypes.c_void_p),
+                ]
+                hr = create_factory(
+                    version["flags"],
+                    ctypes.byref(RS_IDXGIFactory1._iid_),
+                    ctypes.byref(factory_ptr),
+                )
+            else:
+                create_factory.argtypes = [
+                    ctypes.POINTER(comtypes.GUID),
+                    ctypes.POINTER(ctypes.c_void_p),
+                ]
+                hr = create_factory(ctypes.byref(RS_IDXGIFactory1._iid_), ctypes.byref(factory_ptr))
+
+            if hr == 0 and factory_ptr.value:
                 print_result("pass", f"Successfully created {version['name']}")
-                factory_created = True
-                factory_handle = factory_ptr
                 factory_version = version
                 break
-            else:
-                print_result("fail", f"Failed to create {version['name']}, HRESULT: {hr:#x}")
+
+            print_result("warn", f"Failed to create {version['name']}, HRESULT: {_format_hresult(hr)}")
         except Exception as e:
-            print_result("fail", f"Error trying {version['name']}: {e}")
-    
-    if not factory_created:
+            print_result("warn", f"Error trying {version['name']}: {e}")
+
+    if factory_version is None:
         print_result("fail", "Failed to create any DXGI factory")
         return False
-    
-    # If we have a factory, try to enumerate adapters
+
     adapters_found = 0
-    
-    # Factory interface types and GUIDs from lowest version that worked
-    if factory_version["function"] == "CreateDXGIFactory6":
-        factory_interface_guid = "{c1b6694f-ff09-44a9-b03c-77900a0a1d17}"  # IDXGIFactory6
-    elif factory_version["function"] == "CreateDXGIFactory2":
-        factory_interface_guid = "{1bc6ea02-ef36-464f-bf0c-21ca39e5168a}"  # IDXGIFactory4
-    elif factory_version["function"] == "CreateDXGIFactory1":
-        factory_interface_guid = "{770aae78-f26f-4dba-a829-253c83d1b387}"  # IDXGIFactory1
-    else:
-        factory_interface_guid = "{7b7166ec-21c7-44ae-b21a-c9ae321ae369}"  # IDXGIFactory
-    
-    # Define IDXGIAdapter1 vTable structure for minimal interface
-    class IDXGIAdapter1_vTable(ctypes.Structure):
-        _fields_ = [
-            ("QueryInterface", ctypes.c_void_p),
-            ("AddRef", ctypes.c_void_p),
-            ("Release", ctypes.c_void_p),
-            # IDXGIObject methods
-            ("SetPrivateData", ctypes.c_void_p),
-            ("SetPrivateDataInterface", ctypes.c_void_p),
-            ("GetPrivateData", ctypes.c_void_p),
-            ("GetParent", ctypes.c_void_p),
-            # IDXGIAdapter methods
-            ("EnumOutputs", ctypes.c_void_p),
-            ("GetDesc", ctypes.c_void_p),
-            ("CheckInterfaceSupport", ctypes.c_void_p),
-            # IDXGIAdapter1 methods
-            ("GetDesc1", ctypes.c_void_p),
-        ]
-    
-    class IDXGIAdapter1(ctypes.Structure):
-        _fields_ = [("lpVtbl", ctypes.POINTER(IDXGIAdapter1_vTable))]
-    
-    class IDXGIFactory1_vTable(ctypes.Structure):
-        _fields_ = [
-            ("QueryInterface", ctypes.c_void_p),
-            ("AddRef", ctypes.c_void_p),
-            ("Release", ctypes.c_void_p),
-            # IDXGIObject methods
-            ("SetPrivateData", ctypes.c_void_p),
-            ("SetPrivateDataInterface", ctypes.c_void_p),
-            ("GetPrivateData", ctypes.c_void_p),
-            ("GetParent", ctypes.c_void_p),
-            # IDXGIFactory methods
-            ("EnumAdapters", ctypes.c_void_p),
-            ("MakeWindowAssociation", ctypes.c_void_p),
-            ("GetWindowAssociation", ctypes.c_void_p),
-            ("CreateSwapChain", ctypes.c_void_p),
-            ("CreateSoftwareAdapter", ctypes.c_void_p),
-            # IDXGIFactory1 methods
-            ("EnumAdapters1", ctypes.c_void_p),
-        ]
-    
-    class IDXGIFactory1(ctypes.Structure):
-        _fields_ = [("lpVtbl", ctypes.POINTER(IDXGIFactory1_vTable))]
-    
+    factory = ctypes.cast(factory_ptr, ctypes.POINTER(RS_IDXGIFactory1))
     try:
-        # Cast factory handle to IDXGIFactory1
-        factory = ctypes.cast(factory_handle, ctypes.POINTER(IDXGIFactory1))
-        
-        # Use EnumAdapters1 to get adapters
         i = 0
         while True:
+            adapter = ctypes.POINTER(RS_IDXGIAdapter1)()
             try:
-                adapter = ctypes.POINTER(IDXGIAdapter1)()
-                
-                # Extract the EnumAdapters1 function from the vTable
-                EnumAdapters1 = factory.contents.lpVtbl.contents.EnumAdapters1
-                EnumAdapters1_func = ctypes.WINFUNCTYPE(
-                    comtypes.HRESULT,  # Return type
-                    ctypes.POINTER(IDXGIFactory1),  # this pointer
-                    ctypes.c_uint,  # Adapter index
-                    ctypes.POINTER(ctypes.POINTER(IDXGIAdapter1))  # Adapter pointer
-                )(EnumAdapters1)
-                
-                # Call EnumAdapters1
-                hr = EnumAdapters1_func(factory, i, ctypes.byref(adapter))
-                
-                # DXGI_ERROR_NOT_FOUND (0x887A0002) means we've enumerated all adapters
-                if hr == 0x887A0002:
+                factory.EnumAdapters1(i, ctypes.byref(adapter))
+            except comtypes.COMError as ce:
+                hr = ce.args[0] if ce.args else None
+                if hr is not None and ctypes.c_int32(hr).value == ctypes.c_int32(RS_DXGI_ERROR_NOT_FOUND).value:
                     break
-                
-                if hr != 0:  # Non-zero (except NOT_FOUND) is an error
-                    print_result("warn", f"EnumAdapters1 returned error: {hr:#x}")
-                    break
-                
-                # If we got here, we have a valid adapter
-                adapters_found += 1
-                
-                # Try to get adapter description
-                try:
-                    desc = DXGI_ADAPTER_DESC1()
-                    # Extract GetDesc1 function from the vTable
-                    GetDesc1 = adapter.contents.lpVtbl.contents.GetDesc1
-                    GetDesc1_func = ctypes.WINFUNCTYPE(
-                        comtypes.HRESULT,  # Return type
-                        ctypes.POINTER(IDXGIAdapter1),  # this pointer
-                        ctypes.POINTER(DXGI_ADAPTER_DESC1)  # Description pointer
-                    )(GetDesc1)
-                    
-                    # Call GetDesc1
-                    hr = GetDesc1_func(adapter, ctypes.byref(desc))
-                    
-                    if hr == 0:  # S_OK
-                        print(f"  Adapter {i}: {desc.Description}")
-                        print(f"    VRAM: {desc.DedicatedVideoMemory / (1024*1024):.2f} MB")
-                        print(f"    Vendor ID: {desc.VendorId}")
-                    else:
-                        print_result("warn", f"GetDesc1 returned error: {hr:#x}")
-                except Exception as e:
-                    print_result("warn", f"Error getting adapter description: {e}")
-                
-                # Release the adapter
-                adapter.contents.lpVtbl.contents.Release()
-                
-                i += 1
-            except Exception as e:
-                print_result("warn", f"Error enumerating adapter {i}: {e}")
+                print_result(
+                    "warn",
+                    f"Error enumerating adapter {i}: {ce}",
+                )
                 break
-        
-        # Make sure to release the factory
-        factory.contents.lpVtbl.contents.Release()
-        
-        if adapters_found > 0:
-            print_result("pass", f"Found {adapters_found} graphics adapters")
-        else:
-            print_result("fail", "No graphics adapters found")
-        
-        return adapters_found > 0
+
+            if not bool(adapter):
+                print_result("warn", f"EnumAdapters1 returned null adapter pointer for index {i}")
+                break
+
+            adapters_found += 1
+            try:
+                desc = RS_DXGI_ADAPTER_DESC1()
+                adapter.GetDesc1(ctypes.byref(desc))
+                print(f"  Adapter {i}: {desc.Description}")
+                print(f"    VRAM: {int(desc.DedicatedVideoMemory) / (1024*1024):.2f} MB")
+                print(f"    Vendor ID: {desc.VendorId}")
+            except Exception as e:
+                print_result("warn", f"Error getting adapter description: {e}")
+            finally:
+                adapter.Release()
+
+            i += 1
     except Exception as e:
         print_result("fail", f"Error enumerating adapters: {e}")
         traceback.print_exc()
         return False
+    finally:
+        factory.Release()
+
+    if adapters_found > 0:
+        print_result("pass", f"Found {adapters_found} graphics adapters")
+        return True
+
+    print_result("fail", "No graphics adapters found")
+    return False
 
 def test_d3d11_device_creation():
     """Test D3D11 device creation directly"""
     print_header("D3D11 DEVICE CREATION")
     
-    # Define minimal structures and constants for D3D11 device creation
-    D3D_DRIVER_TYPE_UNKNOWN = 0
     D3D_DRIVER_TYPE_HARDWARE = 1
     D3D_DRIVER_TYPE_WARP = 5
     
@@ -502,27 +426,8 @@ def test_d3d11_device_creation():
     D3D11_CREATE_DEVICE_BGRA_SUPPORT = 0x20
     D3D11_SDK_VERSION = 7
     
-    class ID3D11Device_vTable(ctypes.Structure):
-        _fields_ = [
-            ("QueryInterface", ctypes.c_void_p),
-            ("AddRef", ctypes.c_void_p),
-            ("Release", ctypes.c_void_p),
-            # Rest of the vTable...
-        ]
-    
-    class ID3D11Device(ctypes.Structure):
-        _fields_ = [("lpVtbl", ctypes.POINTER(ID3D11Device_vTable))]
-    
-    class ID3D11DeviceContext_vTable(ctypes.Structure):
-        _fields_ = [
-            ("QueryInterface", ctypes.c_void_p),
-            ("AddRef", ctypes.c_void_p),
-            ("Release", ctypes.c_void_p),
-            # Rest of the vTable...
-        ]
-    
-    class ID3D11DeviceContext(ctypes.Structure):
-        _fields_ = [("lpVtbl", ctypes.POINTER(ID3D11DeviceContext_vTable))]
+    from rapidshot._libs.d3d11 import ID3D11Device as RS_ID3D11Device
+    from rapidshot._libs.d3d11 import ID3D11DeviceContext as RS_ID3D11DeviceContext
     
     # Try to create D3D11 device
     try:
@@ -540,9 +445,9 @@ def test_d3d11_device_creation():
             ctypes.POINTER(ctypes.c_uint),  # pFeatureLevels
             ctypes.c_uint,    # FeatureLevels
             ctypes.c_uint,    # SDKVersion
-            ctypes.POINTER(ctypes.POINTER(ID3D11Device)),  # ppDevice
+            ctypes.POINTER(ctypes.c_void_p),  # ppDevice
             ctypes.POINTER(ctypes.c_uint),  # pFeatureLevel
-            ctypes.POINTER(ctypes.POINTER(ID3D11DeviceContext))  # ppImmediateContext
+            ctypes.POINTER(ctypes.c_void_p)  # ppImmediateContext
         ]
         
         # Feature levels to try
@@ -555,9 +460,9 @@ def test_d3d11_device_creation():
         feature_levels_array = (ctypes.c_uint * len(feature_levels))(*feature_levels)
         
         # Create device parameters
-        p_device = ctypes.POINTER(ID3D11Device)()
+        p_device = ctypes.c_void_p()
         feature_level = ctypes.c_uint(0)
-        p_context = ctypes.POINTER(ID3D11DeviceContext)()
+        p_context = ctypes.c_void_p()
         
         # Try hardware driver first
         print("Trying hardware D3D11 device creation...")
@@ -580,9 +485,9 @@ def test_d3d11_device_creation():
             print("Trying WARP (software) D3D11 device creation...")
             
             # Reset pointers
-            p_device = ctypes.POINTER(ID3D11Device)()
+            p_device = ctypes.c_void_p()
             feature_level = ctypes.c_uint(0)
-            p_context = ctypes.POINTER(ID3D11DeviceContext)()
+            p_context = ctypes.c_void_p()
             
             hr = D3D11CreateDevice(
                 None,  # No adapter specified
@@ -597,18 +502,20 @@ def test_d3d11_device_creation():
                 ctypes.byref(p_context)
             )
         
-        if hr == 0 and p_device and p_context:
+        if hr == 0 and p_device.value and p_context.value:
             # Success!
             feature_level_major = (feature_level.value >> 12) & 0xF
             feature_level_minor = (feature_level.value >> 8) & 0xF
             print_result("pass", f"Successfully created D3D11 device with feature level {feature_level_major}.{feature_level_minor}")
             
             # Release resources
-            p_device.contents.lpVtbl.contents.Release()
-            p_context.contents.lpVtbl.contents.Release()
+            d3d_device = ctypes.cast(p_device, ctypes.POINTER(RS_ID3D11Device))
+            d3d_context = ctypes.cast(p_context, ctypes.POINTER(RS_ID3D11DeviceContext))
+            d3d_context.Release()
+            d3d_device.Release()
             return True
         else:
-            print_result("fail", f"Failed to create D3D11 device: {hr:#x}")
+            print_result("fail", f"Failed to create D3D11 device: 0x{ctypes.c_uint32(hr).value:08X}")
             return False
             
     except Exception as e:
@@ -621,21 +528,25 @@ def test_desktop_duplication():
     print_header("DESKTOP DUPLICATION API")
     
     try:
+        from rapidshot._libs.dxgi import IDXGIFactory1 as RS_IDXGIFactory1
+
         # First create a DXGI factory
         create_factory = ctypes.windll.dxgi.CreateDXGIFactory1
+        create_factory.restype = comtypes.HRESULT
+        create_factory.argtypes = [
+            ctypes.POINTER(comtypes.GUID),
+            ctypes.POINTER(ctypes.c_void_p),
+        ]
         factory_ptr = ctypes.c_void_p(0)
-        
-        dxgi_factory1_iid = "{770aae78-f26f-4dba-a829-253c83d1b387}"
-        hr = create_factory(
-            ctypes.byref(comtypes.GUID(dxgi_factory1_iid)),
-            ctypes.byref(factory_ptr)
-        )
+
+        hr = create_factory(ctypes.byref(RS_IDXGIFactory1._iid_), ctypes.byref(factory_ptr))
         
         if hr != 0 or not factory_ptr.value:
             print_result("fail", f"Failed to create DXGI factory: {hr:#x}")
             return False
             
         print_result("pass", "Created DXGI factory")
+        factory = ctypes.cast(factory_ptr, ctypes.POINTER(RS_IDXGIFactory1))
         
         # Unfortunately, testing the full Desktop Duplication API requires a lot more
         # COM interface code than we can include here. We'll report that the factory
@@ -648,9 +559,11 @@ def test_desktop_duplication():
         # 4. Call IDXGIOutput1::DuplicateOutput
         # 5. Test frame acquisition
         
-        print_result("info", "Full Desktop Duplication API test requires complex COM interaction.")
-        print_result("info", "If DXGI factory creation succeeded, basic DirectX initialization is working.")
-        print_result("info", "For detailed testing of the Desktop Duplication API, use the RapidShot diagnostic script.")
+        print(f"{Colors.CYAN}INFO:{Colors.RESET} Full Desktop Duplication API test requires complex COM interaction.")
+        print(f"{Colors.CYAN}INFO:{Colors.RESET} If DXGI factory creation succeeded, basic DirectX initialization is working.")
+        print(f"{Colors.CYAN}INFO:{Colors.RESET} For detailed testing of the Desktop Duplication API, use the RapidShot diagnostic script.")
+
+        factory.Release()
         
         return True
     except Exception as e:

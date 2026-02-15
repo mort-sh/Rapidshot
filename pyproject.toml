@@ -33,22 +33,19 @@ classifiers = [
   "Topic :: Multimedia :: Graphics :: Capture :: Screen Capture",
 ]
 dependencies = [
-    "numpy>=1.19.0",
-    "comtypes>=1.1.0",
-    "ipython>=8.12.3",
-    "pynput>=1.8.1",
-    "av>=12.3.0",
-    "setuptools>=75.3.4",
-    "wmi>=1.5.1",
+  "numpy>=1.19.0",
+  "comtypes>=1.1.0",
+  "ipython>=8.12.3",
+  "pynput>=1.8.1",
+  "av>=12.3.0",
+  "setuptools>=75.3.4",
+  "pillow>=10.4.0",
+  "opencv-python>=4.13.0.92",
 ]
 
 [project.optional-dependencies]
 cv2 = ["opencv-python>=4.5.0"]
-gpu = [
-    "cupy-cuda11x>=11.0.0",
-    "opencv-python>=4.5.0",
-    "rapidshot",
-]
+gpu = ["cupy-cuda11x>=11.0.0", "opencv-python>=4.5.0", "rapidshot"]
 gpu_cuda12 = ["cupy-cuda12x>=12.0.0", "opencv-python>=4.5.0"]
 pil = ["pillow>=8.0.0"]
 all = [
@@ -56,7 +53,7 @@ all = [
   "comtypes>=1.1.0",
   "opencv-python>=4.5.0",
   "pillow>=8.0.0",
-  "cupy-cuda11x>=11.0.0", # Added for default GPU support
+  "cupy-cuda12x>=12.0.0", # Added for default GPU support
   "rapidshot",
 ]
 dev = [
@@ -101,3 +98,10 @@ python_functions = "test_*"
 [tool.uv.sources]
 rapidshot = { workspace = true }
 
+[dependency-groups]
+all = [
+    "rapidshot",
+]
+gpu-cuda12 = [
+    "rapidshot[gpu_cuda12]",
+]

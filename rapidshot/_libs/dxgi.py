@@ -450,85 +450,74 @@ class IDXGIFactory6(IDXGIFactory5):
     ]
 
 
-# Create DXGI Factory function
+def _format_hresult(hr):
+    return f"0x{ctypes.c_uint32(hr).value:08X}"
+
+
+def _hresult_failed(hr):
+    return ctypes.c_long(hr).value < 0
+
+
 try:
     _CreateDXGIFactory1 = ctypes.windll.dxgi.CreateDXGIFactory1
     _CreateDXGIFactory1.restype = comtypes.HRESULT
     _CreateDXGIFactory1.argtypes = [
         ctypes.POINTER(comtypes.GUID),
-        ctypes.POINTER(ctypes.c_void_p)
+        ctypes.POINTER(ctypes.c_void_p),
     ]
 
     def CreateDXGIFactory1(riid, ppFactory):
-        """
-        Create a DXGI factory object.
-        
-        Args:
-            riid: Reference to the factory interface ID
-            ppFactory: Pointer to receive the created factory
-            
-        Returns:
-            HRESULT value
-        """
+        """Create a DXGI factory via DXGI 1.1 API."""
         return _CreateDXGIFactory1(riid, ppFactory)
-except (AttributeError, WindowsError) as e:
-    # Provide a fallback implementation or raise an informative error
+except (AttributeError, OSError) as e:
     logger.error(f"Failed to load CreateDXGIFactory1: {e}")
-    
+
     def CreateDXGIFactory1(riid, ppFactory):
-        """
-        Fallback implementation that raises an error.
-        """
         raise RuntimeError(
-            "CreateDXGIFactory1 is not available. This might indicate DirectX is not properly installed."
+            "CreateDXGIFactory1 is not available. DirectX may not be properly installed."
         )
 
 
-# Function to create DXGI Factory with the latest available version
 try:
-    _CreateDXGIFactory6 = ctypes.windll.dxgi.CreateDXGIFactory6
-    _CreateDXGIFactory6.restype = comtypes.HRESULT
-    _CreateDXGIFactory6.argtypes = [
+    _CreateDXGIFactory2 = ctypes.windll.dxgi.CreateDXGIFactory2
+    _CreateDXGIFactory2.restype = comtypes.HRESULT
+    _CreateDXGIFactory2.argtypes = [
+        wintypes.UINT,
         ctypes.POINTER(comtypes.GUID),
-        ctypes.POINTER(ctypes.c_void_p)
+        ctypes.POINTER(ctypes.c_void_p),
     ]
-    
-    def CreateDXGIFactory6(riid, ppFactory):
-        """
-        Create a DXGI factory object with DXGI 1.6.
-        
-        Args:
-            riid: Reference to the factory interface ID
-            ppFactory: Pointer to receive the created factory
-            
-        Returns:
-            HRESULT value
-        """
-        return _CreateDXGIFactory6(riid, ppFactory)
-except (AttributeError, WindowsError) as e:
-    logger.info(f"CreateDXGIFactory6 not available, falling back to CreateDXGIFactory1: {e}")
-    CreateDXGIFactory6 = None
+
+    def CreateDXGIFactory2(flags, riid, ppFactory):
+        """Create a DXGI factory via DXGI 1.2+ API."""
+        return _CreateDXGIFactory2(flags, riid, ppFactory)
+except (AttributeError, OSError) as e:
+    logger.info(
+        f"CreateDXGIFactory2 not available, using CreateDXGIFactory1 fallback path: {e}"
+    )
+    _CreateDXGIFactory2 = None
+
+    def CreateDXGIFactory2(flags, riid, ppFactory):
+        raise RuntimeError("CreateDXGIFactory2 is not available on this system.")
 
 
-# Create DXGI Factory function with version detection
 def CreateLatestDXGIFactory(riid, ppFactory):
     """
-    Create a DXGI factory with the latest available version.
-    
-    Args:
-        riid: Reference to the factory interface ID
-        ppFactory: Pointer to receive the created factory
-        
-    Returns:
-        HRESULT value
+    Create a DXGI factory with the best available constructor on this OS.
+    Prefers CreateDXGIFactory2 (DXGI 1.2+) and falls back to CreateDXGIFactory1.
     """
-    try:
-        if CreateDXGIFactory6 is not None:
-            logger.info("Using DXGI 1.6 (CreateDXGIFactory6)")
-            return CreateDXGIFactory6(riid, ppFactory)
-        else:
-            logger.info("Using DXGI 1.1 (CreateDXGIFactory1)")
-            return CreateDXGIFactory1(riid, ppFactory)
-    except Exception as e:
-        logger.error(f"Failed to create DXGI Factory: {e}")
-        raise
+    if _CreateDXGIFactory2 is not None:
+        hr = CreateDXGIFactory2(0, riid, ppFactory)
+        if not _hresult_failed(hr):
+            logger.info("Using DXGI 1.2+ factory creation (CreateDXGIFactory2)")
+            return hr
+        logger.info(
+            "CreateDXGIFactory2 failed with %s, falling back to CreateDXGIFactory1",
+            _format_hresult(hr),
+        )
+
+    hr = CreateDXGIFactory1(riid, ppFactory)
+    if _hresult_failed(hr):
+        logger.error("CreateDXGIFactory1 failed with %s", _format_hresult(hr))
+    else:
+        logger.info("Using DXGI 1.1 factory creation (CreateDXGIFactory1)")
+    return hr

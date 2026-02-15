@@ -1,18 +1,13 @@
-RapidShot DirectX Diagnostic Results - 2025-04-02 14:02:36
+RapidShot DirectX Diagnostic Results - 2026-02-15 05:32:22
 
-PASSED: 18
-WARNINGS: 5
-FAILED: 4
+PASSED: 22
+WARNINGS: 3
+FAILED: 1
 
 FAILED TESTS:
-  • Error trying DXGI 1.4 (CreateDXGIFactory2): exception: access violation writing 0x0000003776D032DE
-  • Error enumerating adapters: 'int' object is not callable
-  • Error in D3D11 device creation: 'int' object is not callable
-  • Error in create(): Failed to create ScreenCapture instance: Failed to initialize duplicator: (-2005270524, 'The specified device interface or feature level is not supported on this system.', (None, None, None, 0, None))
+  • Error in create(): Failed to create ScreenCapture instance: exception: access violation writing 0x0000000000000024
 
 WARNINGS:
   • Optional dependency opencv-python is not installed
   • Optional dependency pillow is not installed
-  • Optional dependency cupy is not installed
-  • CreateDXGIFactory6 not found in dxgi.dll
-  • Error enumerating adapter 0: 'int' object is not callable
+  • WMI module not available. Install with 'pip install wmi' for detailed GPU information.

@@ -1,0 +1,158 @@
+❯  python .\diagnostic_script.py
+===== RAPIDSHOT DIRECTX DIAGNOSTIC TOOL =====
+Testing at 2026-02-15 04:53:59
+
+==================== STARTING DIAGNOSTICS ====================
+
+==================== SYSTEM INFORMATION ====================
+OS: Windows 10 10.0.26200
+Python: 3.11.14
+Architecture: 64bit
+Processor: AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD
+✓ PASS: Windows 10 should have good DirectX support
+✓ PASS: Using 64-bit Python
+
+==================== DEPENDENCY VERIFICATION ====================
+✓ PASS: numpy version 2.4.2 is installed
+✓ PASS: comtypes version 1.4.15 is installed
+⚠ WARNING: Optional dependency opencv-python is not installed
+⚠ WARNING: Optional dependency pillow is not installed
+⚠ WARNING: Optional dependency cupy is not installed
+
+==================== DIRECTX DLL VERIFICATION ====================
+✓ d3d11.dll is available
+  Version: 10.0.26100.7705 (WinBuild.160101.0800)
+✓ dxgi.dll is available
+  Version: 10.0.26100.7705 (WinBuild.160101.0800)
+✓ d3dcompiler_47.dll is available
+  Version: 10.0.26100.7824 (WinBuild.160101.0800)
+✓ PASS: All essential DirectX DLLs are available
+
+==================== GPU INFORMATION ====================
+⚠ WARNING: WMI module not available. Install with 'pip install wmi' for detailed GPU information.      
+Running dxdiag to gather GPU information (this may take a moment)...
+Display Devices:
+  Card name: NVIDIA GeForce RTX 3080
+✓ PASS: Found compatible GPU: NVIDIA GeForce RTX 3080
+  Display Memory: 43607 MB
+  Driver Version: 32.0.15.9186
+  Driver Date/Size: 1/19/2026 7:00:00 PM, 816488 bytes
+  Card name: NVIDIA GeForce RTX 3080
+✓ PASS: Found compatible GPU: NVIDIA GeForce RTX 3080
+  Display Memory: 43607 MB
+  Driver Version: 32.0.15.9186
+  Driver Date/Size: 1/19/2026 7:00:00 PM, 816488 bytes
+  Card name: NVIDIA GeForce RTX 3080
+✓ PASS: Found compatible GPU: NVIDIA GeForce RTX 3080
+  Display Memory: 43607 MB
+  Driver Version: 32.0.15.9186
+  Driver Date/Size: 1/19/2026 7:00:00 PM, 816488 bytes
+  Card name: AMD Radeon(TM) Graphics
+✓ PASS: Found compatible GPU: AMD Radeon(TM) Graphics
+  Display Memory: 33538 MB
+  Driver Version: 32.0.21030.2001
+  Driver Date/Size: 9/24/2025 7:00:00 PM, 141760 bytes
+  Driver Version: Unknown
+  Driver Date: Unknown
+  Driver Version: Unknown
+  Driver Date: Unknown
+  Driver Version: Unknown
+  Driver Date: Unknown
+  Driver Version: 1.4.5.7 (English)
+  Driver Version: 10.0.26100.1 (English)
+  Driver Version: 10.0.26100.1150 (English)
+  Driver Version: 6.4.0.2422 (English)
+  Driver Version: 1.4.5.7 (English)
+  Driver Version: 1.4.5.7 (English)
+  Driver Version:
+  Driver Version: 10.0.26100.1150 (English)
+
+==================== DXGI FACTORY CREATION ====================
+Trying DXGI 1.6 (CreateDXGIFactory6)...
+⚠ WARNING: CreateDXGIFactory6 not found in dxgi.dll
+Trying DXGI 1.4 (CreateDXGIFactory2)...
+✗ FAIL: Error trying DXGI 1.4 (CreateDXGIFactory2): [WinError -2147467262] No such interface supported
+Trying DXGI 1.1 (CreateDXGIFactory1)...
+✓ PASS: Successfully created DXGI 1.1 (CreateDXGIFactory1)
+  Adapter 0: NVIDIA GeForce RTX 3080
+    VRAM: 12091.00 MB
+    Vendor ID: 4318
+⚠ WARNING: Error enumerating adapter 0: 'int' object is not callable
+✗ FAIL: Error enumerating adapters: 'int' object is not callable
+Traceback (most recent call last):
+  File "C:\Users\m0rt\projects\RapidshotOG\diagnostic_script.py", line 475, in test_dxgi_factory_creation
+    factory.contents.lpVtbl.contents.Release()
+TypeError: 'int' object is not callable
+
+==================== D3D11 DEVICE CREATION ====================
+Trying hardware D3D11 device creation...
+✓ PASS: Successfully created D3D11 device with feature level 11.1
+✗ FAIL: Error in D3D11 device creation: 'int' object is not callable
+Traceback (most recent call last):
+  File "C:\Users\m0rt\projects\RapidshotOG\diagnostic_script.py", line 607, in test_d3d11_device_creation
+    p_device.contents.lpVtbl.contents.Release()
+TypeError: 'int' object is not callable
+
+==================== DESKTOP DUPLICATION API ====================
+✓ PASS: Created DXGI factory
+
+==================== RAPIDSHOT IMPORT TEST ====================
+Attempting to import rapidshot...
+2026-02-15 04:54:30,333 - rapidshot._libs.dxgi - INFO - CreateDXGIFactory6 not available, falling back to CreateDXGIFactory1: function 'CreateDXGIFactory6' not found
+✓ PASS: Successfully imported rapidshot from C:\Users\m0rt\projects\RapidshotOG\rapidshot\__init__.py  
+✓ PASS: RapidShot version: 1.1.0
+✓ PASS: All required functions found in rapidshot module
+✓ PASS: Successfully imported rapidshot.core
+✓ PASS: All core modules found
+✓ PASS: Successfully imported DirectX API modules
+
+==================== RAPIDSHOT DEVICE INFO ====================
+2026-02-15 04:54:30,338 - rapidshot.init - INFO - Initializing RapidshotFactory
+2026-02-15 04:54:30,340 - rapidshot.core.device - INFO - Initializing Device for adapter: NVIDIA GeForce RTX 3080
+2026-02-15 04:54:30,340 - rapidshot.core.device - DEBUG - Using feature levels: ['0xb100', '0xb000', '0xa100', '0xa000', '0x9300', '0x9200', '0x9100']
+2026-02-15 04:54:30,340 - rapidshot.core.device - DEBUG - Trying driver type 0 with flags 32
+2026-02-15 04:54:30,357 - rapidshot.core.device - INFO - Successfully created device with feature level 11.1
+2026-02-15 04:54:30,358 - rapidshot.core.device - INFO - Found 3 outputs
+2026-02-15 04:54:30,358 - rapidshot.core.device - INFO - Initializing Device for adapter: AMD Radeon(TM) Graphics
+2026-02-15 04:54:30,358 - rapidshot.core.device - DEBUG - Using feature levels: ['0xb100', '0xb000', '0xa100', '0xa000', '0x9300', '0x9200', '0x9100']
+2026-02-15 04:54:30,358 - rapidshot.core.device - DEBUG - Trying driver type 0 with flags 32
+2026-02-15 04:54:30,393 - rapidshot.core.device - INFO - Successfully created device with feature level 11.1
+2026-02-15 04:54:30,393 - rapidshot.core.device - INFO - Found 0 outputs
+2026-02-15 04:54:30,395 - rapidshot.core.device - INFO - Successfully created device with feature level 11.1
+2026-02-15 04:54:30,403 - rapidshot.core.device - INFO - Found 0 outputs
+2026-02-15 04:54:30,405 - rapidshot.init - INFO - RapidshotFactory initialized with 1 devices
+Device info:
+Device[0]:<Device Name:NVIDIA GeForce RTX 3080 Dedicated VRAM:12091Mb VendorId:4318>
+
+✓ PASS: Successfully retrieved device info
+
+==================== RAPIDSHOT OUTPUT INFO ====================
+Output info:
+Device[0] Output[0]: Resolution:(3440, 1440) Rotation:0 Primary:True
+Device[0] Output[1]: Resolution:(1920, 1080) Rotation:0 Primary:False
+Device[0] Output[2]: Resolution:(1080, 1920) Rotation:270 Primary:False
+
+✓ PASS: Successfully retrieved output info
+
+==================== RAPIDSHOT CREATE ====================
+Attempting to create a capture instance...
+2026-02-15 04:54:30,407 - rapidshot.init - DEBUG - Creating ScreenCapture with device_idx=0, output_idx=None, nvidia_gpu=False, prefer_integrated=False
+2026-02-15 04:54:30,407 - rapidshot.init - INFO - Using primary monitor (output index 0)
+2026-02-15 04:54:30,407 - rapidshot.capture - INFO - Initializing capture resources...
+2026-02-15 04:54:30,407 - rapidshot.capture - DEBUG - Creating Duplicator for output: \\.\DISPLAY1
+2026-02-15 04:54:30,409 - rapidshot.core.duplicator - INFO - Duplicator initialized for output: \\.\DISPLAY1
+2026-02-15 04:54:30,410 - rapidshot.capture - DEBUG - Creating StageSurface for output: \\.\DISPLAY1
+2026-02-15 04:54:30,410 - rapidshot.capture - DEBUG - Creating Processor with color: BGR, GPU: False
+Warning: Using PIL version 12.1.1. Version 9.0.0 or higher is recommended.
+Warning: Using OpenCV version 4.13.0. Version 4.5.0 or higher is recommended.
+2026-02-15 04:54:30,480 - rapidshot.capture - DEBUG - Initializing new memory pool with shape (1440, 3440, 4), 10 buffers.
+2026-02-15 04:54:30,481 - rapidshot.capture - INFO - Capture resources successfully initialized.
+2026-02-15 04:54:30,582 - rapidshot.init - INFO - Created new ScreenCapture instance for Device 0--Output 0
+✓ PASS: Successfully created capture instance
+Attempting to grab a frame...
+2026-02-15 04:54:30,583 - rapidshot.core.duplicator - DEBUG - Frame acquired successfully
+2026-02-15 04:54:30,583 - rapidshot.core.duplicator - DEBUG - Cursor shape acquired: 32x32, Type: 2
+2026-02-15 04:54:30,583 - rapidshot.core.duplicator - DEBUG - Frame released
+✓ PASS: Successfully grabbed frame: 3440x1440x3
+Attempting to grab a frame after delay...
+2026-02-15 04:54:30,693 - rapidshot.core.duplicator - DEBUG - Frame acquired successfully
