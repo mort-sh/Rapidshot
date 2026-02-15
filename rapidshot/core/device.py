@@ -6,6 +6,7 @@ from typing import List, Optional
 import comtypes
 from rapidshot._libs.d3d11 import *
 from rapidshot._libs.dxgi import *
+from rapidshot.util.ctypes_helpers import release_com_ptr
 
 # Configure logging
 logger = logging.getLogger("rapidshot.core.device")
@@ -308,17 +309,17 @@ class Device:
         Release DirectX resources.
         """
         if self.im_context:
-            self.im_context.Release()
+            release_com_ptr(self.im_context)
             self.im_context = None
             
         if self.context:
-            self.context.Release()
+            release_com_ptr(self.context)
             self.context = None
             
         if self.device:
-            self.device.Release()
+            release_com_ptr(self.device)
             self.device = None
             
         if self.adapter:
-            self.adapter.Release()
+            release_com_ptr(self.adapter)
             self.adapter = None

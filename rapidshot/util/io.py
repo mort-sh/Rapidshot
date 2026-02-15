@@ -93,10 +93,9 @@ def _enum_adapters_with_factory6(
 
 def enum_dxgi_adapters() -> List[ctypes.POINTER(IDXGIAdapter1)]:
     dxgi_factory = _create_dxgi_factory1()
-    try:
-        return _enum_adapters_with_factory1(dxgi_factory)
-    finally:
-        dxgi_factory.Release()
+    # comtypes interface pointers are auto-released on GC. Explicit Release() here
+    # can double-release and corrupt COM state.
+    return _enum_adapters_with_factory1(dxgi_factory)
 
 
 def enum_dxgi_adapters_with_preference(
@@ -113,7 +112,6 @@ def enum_dxgi_adapters_with_preference(
         List of adapter pointers
     """
     dxgi_factory = _create_dxgi_factory1()
-    dxgi_factory6 = None
     try:
         try:
             dxgi_factory6 = dxgi_factory.QueryInterface(IDXGIFactory6)
@@ -130,10 +128,6 @@ def enum_dxgi_adapters_with_preference(
     except Exception as e:
         logger.error(f"Failed to enumerate adapters with preference: {e}")
         return _enum_adapters_with_factory1(dxgi_factory)
-    finally:
-        if dxgi_factory6 is not None:
-            dxgi_factory6.Release()
-        dxgi_factory.Release()
 
 
 def enum_dxgi_outputs(

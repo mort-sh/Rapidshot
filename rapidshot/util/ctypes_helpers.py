@@ -47,3 +47,30 @@ def pointer_to_address(ptr: Union[int, ctypes.c_void_p, ctypes._Pointer]) -> Opt
             return None
 
     return None
+
+
+def release_com_ptr(ptr: Optional[ctypes._Pointer]) -> None:
+    """Release a comtypes pointer exactly once.
+
+    comtypes interface pointers are auto-released during object finalization.
+    If code calls ``Release()`` manually, a later finalizer call can invoke
+    ``Release()`` again and corrupt COM state. This helper releases the object
+    and immediately nulls the wrapped pointer so finalization is a no-op.
+    """
+
+    if ptr is None:
+        return
+
+    try:
+        if not bool(ptr):
+            return
+    except Exception:
+        return
+
+    ptr.Release()
+
+    try:
+        ctypes.cast(ctypes.byref(ptr), ctypes.POINTER(ctypes.c_void_p))[0] = None
+    except Exception:
+        # Best effort only; failing to clear should not mask release outcome.
+        pass

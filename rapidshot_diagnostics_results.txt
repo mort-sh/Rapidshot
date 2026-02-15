@@ -1,13 +1,9 @@
-RapidShot DirectX Diagnostic Results - 2026-02-15 05:32:22
+RapidShot DirectX Diagnostic Results - 2026-02-15 06:40:05
 
-PASSED: 22
-WARNINGS: 3
-FAILED: 1
-
-FAILED TESTS:
-  • Error in create(): Failed to create ScreenCapture instance: exception: access violation writing 0x0000000000000024
+PASSED: 25
+WARNINGS: 2
+FAILED: 0
 
 WARNINGS:
   • Optional dependency opencv-python is not installed
   • Optional dependency pillow is not installed
-  • WMI module not available. Install with 'pip install wmi' for detailed GPU information.

@@ -31,6 +31,7 @@ from rapidshot.util.errors import (
     RapidShotConfigError,
     RapidShotTimeoutError # Though timeout is handled locally, good to have if needed
 )
+from rapidshot.util.ctypes_helpers import release_com_ptr
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -217,7 +218,7 @@ class Duplicator:
             # Release the intermediate IDXGIResource reference created by AcquireNextFrame
             if frame_acquired and res:
                 try:
-                    res.Release()
+                    release_com_ptr(res)
                 except Exception as e:
                     logger.warning(f"Failed to release resource: {e}")
 
@@ -306,7 +307,7 @@ class Duplicator:
         """
         if self.duplicator is not None:
             try:
-                self.duplicator.Release()
+                release_com_ptr(self.duplicator)
                 logger.info("Duplicator resources released.")
             except comtypes.COMError as ce:
                 hresult = ce.args[0] if ce.args else None

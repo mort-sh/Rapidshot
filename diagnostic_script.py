@@ -46,6 +46,24 @@ results = {
     "fail": []
 }
 
+
+def release_com_ptr(ptr):
+    """Release a COM pointer exactly once and clear it."""
+    if ptr is None:
+        return
+    try:
+        if not bool(ptr):
+            return
+    except Exception:
+        return
+
+    ptr.Release()
+
+    try:
+        ctypes.cast(ctypes.byref(ptr), ctypes.POINTER(ctypes.c_void_p))[0] = None
+    except Exception:
+        pass
+
 def print_header(title):
     """Print a formatted section header"""
     print(f"\n{Colors.BOLD}{Colors.BLUE}{'=' * 20} {title} {'=' * 20}{Colors.RESET}")
@@ -394,7 +412,7 @@ def test_dxgi_factory_creation():
             except Exception as e:
                 print_result("warn", f"Error getting adapter description: {e}")
             finally:
-                adapter.Release()
+                release_com_ptr(adapter)
 
             i += 1
     except Exception as e:
@@ -402,7 +420,7 @@ def test_dxgi_factory_creation():
         traceback.print_exc()
         return False
     finally:
-        factory.Release()
+        release_com_ptr(factory)
 
     if adapters_found > 0:
         print_result("pass", f"Found {adapters_found} graphics adapters")
@@ -511,8 +529,8 @@ def test_d3d11_device_creation():
             # Release resources
             d3d_device = ctypes.cast(p_device, ctypes.POINTER(RS_ID3D11Device))
             d3d_context = ctypes.cast(p_context, ctypes.POINTER(RS_ID3D11DeviceContext))
-            d3d_context.Release()
-            d3d_device.Release()
+            release_com_ptr(d3d_context)
+            release_com_ptr(d3d_device)
             return True
         else:
             print_result("fail", f"Failed to create D3D11 device: 0x{ctypes.c_uint32(hr).value:08X}")
@@ -563,7 +581,7 @@ def test_desktop_duplication():
         print(f"{Colors.CYAN}INFO:{Colors.RESET} If DXGI factory creation succeeded, basic DirectX initialization is working.")
         print(f"{Colors.CYAN}INFO:{Colors.RESET} For detailed testing of the Desktop Duplication API, use the RapidShot diagnostic script.")
 
-        factory.Release()
+        release_com_ptr(factory)
         
         return True
     except Exception as e:

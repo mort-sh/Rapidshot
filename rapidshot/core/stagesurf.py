@@ -5,6 +5,7 @@ from rapidshot._libs.d3d11 import *
 from rapidshot._libs.dxgi import *
 from rapidshot.core.device import Device
 from rapidshot.core.output import Output
+from rapidshot.util.ctypes_helpers import release_com_ptr
 
 
 @dataclass
@@ -38,7 +39,9 @@ class StageSurface:
         if self.texture is not None:
             self.width = 0
             self.height = 0
-            self.texture.Release()
+            if self.interface is not None:
+                release_com_ptr(self.interface)
+            release_com_ptr(self.texture)
             self.texture = None
             self.interface = None
 
