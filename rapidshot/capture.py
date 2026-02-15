@@ -427,6 +427,7 @@ class ScreenCapture:
         update_result = self._duplicator.update_frame()
         if not update_result:
             # ACCESS_LOST - need re-initialization
+            # Note: _handle_access_lost() releases frame if acquired, safe to return early
             self._handle_access_lost()
             return False
         
