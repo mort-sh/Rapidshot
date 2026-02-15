@@ -14,7 +14,9 @@ import rapidshot
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="RapidShot continuous-capture smoke test.")
+    parser = argparse.ArgumentParser(
+        description="RapidShot continuous-capture smoke test."
+    )
     parser.add_argument(
         "--fps",
         type=int,
@@ -24,7 +26,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--frames",
         type=int,
-        default=300,
+        default=3000,
         help="Number of frames to read before stopping.",
     )
     parser.add_argument(
@@ -36,7 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-idx",
         type=int,
-        default=None,
+        default=1,
         help="Display output index. Default auto-selects primary output.",
     )
     parser.add_argument(
