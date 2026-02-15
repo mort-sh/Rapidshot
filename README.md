@@ -33,8 +33,17 @@ pip install rapidshot[cv2]
 ### With NVIDIA GPU Acceleration
 
 ```bash
+# For CUDA 12.x (default)
 pip install rapidshot[gpu]
+
+# For CUDA 11.x
+pip install rapidshot[gpu_cuda11]
+
+# For CUDA 12.x (explicit)
+pip install rapidshot[gpu_cuda12]
 ```
+
+> **Note:** GPU acceleration requires a compatible CUDA installation. The package will automatically fall back to CPU mode if CuPy is not available.
 
 ### With All Dependencies
 
