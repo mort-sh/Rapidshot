@@ -4,7 +4,6 @@ import logging
 from rapidshot.util.logging import get_logger
 from numpy import rot90, ndarray, newaxis, uint8
 from rapidshot.processor.base import ProcessorBackends
-from rapidshot.util.ctypes_helpers import pointer_to_address
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -138,11 +137,20 @@ class NumpyProcessor:
         try:
             pitch = int(rect.Pitch)
             row_bytes = width * 4
-            src_address = pointer_to_address(rect.pBits)
-            dst_address = pointer_to_address(image_ptr)
-
-            if src_address is None or dst_address is None:
-                raise ValueError("Invalid source or destination pointer for shot copy")
+            
+            # Get source address using ctypes.addressof directly
+            if hasattr(rect.pBits, 'contents'):
+                src_address = ctypes.addressof(rect.pBits.contents)
+            else:
+                raise ValueError("Invalid source pointer for shot copy")
+            
+            # Get destination address
+            if hasattr(image_ptr, 'contents'):
+                dst_address = ctypes.addressof(image_ptr.contents)
+            elif isinstance(image_ptr, int):
+                dst_address = image_ptr
+            else:
+                raise ValueError("Invalid destination pointer for shot copy")
 
             if pitch == row_bytes:
                 ctypes.memmove(dst_address, src_address, row_bytes * height)
@@ -158,7 +166,7 @@ class NumpyProcessor:
 
     def process(self, rect, width, height, region, rotation_angle, output_buffer=None):
         """
-        Process a frame with robust error handling.
+        Process a frame using zero-copy numpy views.
         
         Args:
             rect: Mapped rectangle
@@ -168,14 +176,17 @@ class NumpyProcessor:
             rotation_angle: Rotation angle,
             output_buffer: Pre-allocated NumPy array to store the processed frame.
         """
-        # Phase 1: Get data into the output buffer (no rotation, no color conversion yet)
         try:
             if not hasattr(rect, 'pBits') or not rect.pBits:
                 raise ValueError(f"Invalid rect or pBits, cannot process. Rect type: {type(rect)}")
 
             pitch = int(rect.Pitch)
-            src_address = pointer_to_address(rect.pBits)
-            if src_address is None:
+            
+            # Get the pointer address using ctypes.addressof directly
+            # This avoids the pointer_to_address helper that can return None
+            if hasattr(rect.pBits, 'contents'):
+                src_address = ctypes.addressof(rect.pBits.contents)
+            else:
                 raise ValueError("Mapped rect does not contain a valid pointer")
 
             region_left, region_top, region_right, region_bottom = region
@@ -185,9 +196,23 @@ class NumpyProcessor:
             region_height = region_bottom - region_top
             region_width = region_right - region_left
 
+            # Create zero-copy numpy array directly over mapped memory
+            # Key insight from BetterCam: use pitch in the shape to handle stride
+            pitch_in_pixels = pitch // 4
+            total_size = pitch * height
+            src_buffer = (ctypes.c_ubyte * total_size).from_address(src_address)
+            
+            # Create view over entire mapped memory with pitch as width
+            image = np.ctypeslib.as_array(src_buffer).reshape((height, pitch_in_pixels, 4))
+            
+            # Extract the region using numpy slicing (zero-copy)
+            # This handles both the region extraction and pitch correction in one step
+            image = image[region_top:region_bottom, region_left:region_right, :]
+            
+            # Now handle output buffer logic
             if output_buffer is None:
-                output_buffer = np.empty((region_height, region_width, 4), dtype=np.uint8)
                 is_pooled_buffer = False
+                current_array = image
             else:
                 is_pooled_buffer = True
                 if output_buffer.shape[:2] != (region_height, region_width) or output_buffer.shape[2] != 4:
@@ -195,52 +220,27 @@ class NumpyProcessor:
                         f"Output buffer shape {output_buffer.shape} does not match region shape "
                         f"({region_height}, {region_width}, 4)."
                     )
+                # Copy data into the pooled buffer
+                output_buffer[:] = image
+                current_array = output_buffer
 
-            row_bytes = region_width * 4
-            total_pitch_bytes = pitch * region_height
-            src_buffer = (ctypes.c_ubyte * total_pitch_bytes).from_address(src_address + region_top * pitch)
-            src_view = np.ctypeslib.as_array(src_buffer).reshape(region_height, pitch)
-
-            dest_view = output_buffer.view(np.uint8).reshape(region_height, region_width * 4)
-
-            if pitch == row_bytes and region_left == 0:
-                dest_view[:] = src_view[:, :row_bytes]
-            else:
-                start = region_left * 4
-                end = start + row_bytes
-                for row in range(region_height):
-                    dest_view[row, :] = src_view[row, start:end]
-
-
-            # Phase 2: Color Conversion and Rotation
-            current_array = output_buffer # Start with the pooled buffer
             is_still_pooled_buffer = is_pooled_buffer
 
             # Color Conversion
-            # self.color_mode is None if original was 'BGRA' and no conversion is needed.
-            # output_buffer is already BGRA (4 channels).
-            if self.color_mode is not None: # Not 'BGRA', so conversion is intended
-                # process_cvtcolor expects BGRA input if it's doing standard conversions.
-                # output_buffer is BGRA, so that's fine.
-                # It returns a new array (or potentially a view for NumPy slicing based ones)
-                converted_array = self.process_cvtcolor(current_array) # Pass current_array directly
+            if self.color_mode is not None:
+                converted_array = self.process_cvtcolor(current_array)
 
                 if converted_array.shape[0] == current_array.shape[0] and \
                    converted_array.shape[1] == current_array.shape[1]:
                     # If number of channels changed (e.g. to BGR or GRAY)
                     if converted_array.shape[2] != current_array.shape[2]:
-                        # We cannot use the original output_buffer if channel count changes.
-                        # Create a new array for the converted result.
-                        current_array = converted_array # This is a new array.
+                        current_array = converted_array
                         is_still_pooled_buffer = False
                     elif converted_array.base is not current_array.base and converted_array is not current_array : 
-                        # It's a copy with the same shape (e.g. BGRA to RGBA via NumPy slice)
-                        # or OpenCV conversion that maintained shape.
-                        # Copy data back to the pooled buffer if it's still the active one.
+                        # It's a copy with the same shape
                         if is_still_pooled_buffer:
                              current_array[:] = converted_array
-                        # else: current_array is already a new buffer, no need to copy to output_buffer
-                else: # Shape (height/width) changed during color conversion (should not happen with current cvtcolor)
+                else:
                     logger.warning("Color conversion changed height/width, which is unexpected.")
                     current_array = converted_array
                     is_still_pooled_buffer = False
@@ -249,17 +249,17 @@ class NumpyProcessor:
             if rotation_angle != 0:
                 k = (rotation_angle // 90) % 4
                 if k != 0:
-                    rotated_array = np.rot90(current_array, k=k) # axes=(0,1) is default for 2D, need (1,0) for image width/height swap
+                    rotated_array = np.rot90(current_array, k=k)
                     
                     # Check if shape changed due to rotation
                     if rotated_array.shape[0] != current_array.shape[0] or \
                        rotated_array.shape[1] != current_array.shape[1]:
                         current_array = rotated_array
-                        is_still_pooled_buffer = False # Shape changed, cannot use original pooled buffer
-                    elif is_still_pooled_buffer : # Shape is same, and we are still using the pooled buffer
-                        current_array[:] = rotated_array # Copy back to pooled buffer
-                    else: # Shape is same, but current_array is already a new buffer
-                        current_array = rotated_array # Update current_array to be the rotated one
+                        is_still_pooled_buffer = False
+                    elif is_still_pooled_buffer:
+                        current_array[:] = rotated_array
+                    else:
+                        current_array = rotated_array
 
             return current_array, is_still_pooled_buffer
 
@@ -271,4 +271,4 @@ class NumpyProcessor:
                     output_buffer.fill(0)
                 except Exception as fill_e:
                     logger.error(f"Error filling output_buffer after another error: {fill_e}")
-            return output_buffer, False # Indicate buffer might be invalid or is not the result
+            return output_buffer, False
