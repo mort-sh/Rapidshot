@@ -101,6 +101,18 @@ class Duplicator:
             else:
                 raise RapidShotDXGIError(f"Failed to initialize duplicator: {ce}", hresult=hresult) from ce
 
+    def _safe_release_resource(self, res: ctypes.POINTER(IDXGIResource)) -> None:
+        """
+        Safely release an IDXGIResource reference.
+        
+        Args:
+            res: The resource reference to release
+        """
+        try:
+            res.Release()
+        except Exception as e:
+            logger.debug(f"Failed to release resource: {e}")
+
     def update_frame(self) -> bool:
         """
         Update the frame and cursor state.
@@ -160,10 +172,7 @@ class Duplicator:
                 logger.debug("No new frame content")
                 self.updated = False
                 # Release the resource reference since we won't process the frame
-                try:
-                    res.Release()
-                except Exception as release_err:
-                    logger.debug(f"Failed to release resource: {release_err}")
+                self._safe_release_resource(res)
                 return True
 
             # Process the frame
@@ -172,17 +181,11 @@ class Duplicator:
                 self.texture = queried_texture
                 self.updated = True
                 # Release the resource reference now that we have the texture
-                try:
-                    res.Release()
-                except Exception as release_err:
-                    logger.debug(f"Failed to release resource: {release_err}")
+                self._safe_release_resource(res)
                 return True
             except comtypes.COMError as ce:
                 # If QueryInterface fails, release the resource reference first, then the frame
-                try:
-                    res.Release()
-                except Exception as release_err:
-                    logger.debug(f"Failed to release resource during QueryInterface failure: {release_err}")
+                self._safe_release_resource(res)
                 self.duplicator.ReleaseFrame()
                 self._frame_acquired = False
                 error_msg = f"Failed to query texture interface: {ce}"
