@@ -525,15 +525,16 @@ class ScreenCapture:
                     output_array_for_region = np.empty(temp_shape, dtype=np.uint8)
 
             try:
-                self._duplicator.update_frame()
-            except RapidShotReinitError as e:
-                logger.warning(f"DXGI Re-init error during update_frame: {e}. Flagging for re-initialization.")
-                self._needs_reinit = True
-                if self._duplicator._frame_acquired:
-                    self._duplicator.release_frame()
-                if pooled_buffer_wrapper:
-                    pooled_buffer_wrapper.release()
-                return None
+                update_result = self._duplicator.update_frame()
+                if not update_result:
+                    # ACCESS_LOST - need re-initialization
+                    logger.warning(f"DXGI Access lost during update_frame. Flagging for re-initialization.")
+                    self._needs_reinit = True
+                    if self._duplicator._frame_acquired:
+                        self._duplicator.release_frame()
+                    if pooled_buffer_wrapper:
+                        pooled_buffer_wrapper.release()
+                    return None
             except RapidShotDeviceError as e:
                 logger.error(f"DXGI Device error during update_frame: {e}. Flagging for re-initialization.")
                 self._needs_reinit = True
