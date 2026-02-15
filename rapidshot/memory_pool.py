@@ -2,18 +2,22 @@ import collections
 import threading
 import numpy as np
 
+
 # Custom Exception
 class PoolExhaustedError(RuntimeError):
     """Raised when no buffers are available in the pool."""
+
     pass
+
 
 class PooledBuffer:
     """
     A wrapper around a NumPy or CuPy array managed by a memory pool.
     """
+
     def __init__(self, array, pool_ref):
         self.array = array
-        self.state = 'AVAILABLE'  # Initial state
+        self.state = "AVAILABLE"  # Initial state
         self._pool = pool_ref
 
     def release(self):
@@ -32,17 +36,19 @@ class PooledBuffer:
     def dtype(self):
         return self.array.dtype
 
+
 class BaseMemoryPool:
     """
     Abstract-like base class for memory pools.
     """
+
     def __init__(self, buffer_shape, dtype, num_buffers):
         self.buffer_shape = buffer_shape
         self.dtype = dtype
         if num_buffers <= 0:
             raise ValueError("Number of buffers must be positive.")
         self.num_buffers = num_buffers
-        
+
         self._buffers = []  # List of all PooledBuffer objects
         self._available_buffers = collections.deque()
         self._lock = threading.Lock()
@@ -62,13 +68,13 @@ class BaseMemoryPool:
         """
         if self._initialized:
             # Or raise an error, or allow re-initialization with cleanup
-            print("Pool is already initialized.") 
+            print("Pool is already initialized.")
             return
 
-        with self._lock: # Ensure thread safety during initialization
-            if self._initialized: # Double check after acquiring lock
+        with self._lock:  # Ensure thread safety during initialization
+            if self._initialized:  # Double check after acquiring lock
                 return
-            
+
             for _ in range(self.num_buffers):
                 try:
                     actual_array = self._create_buffer()
@@ -82,31 +88,33 @@ class BaseMemoryPool:
                     # Potentially clean up already created buffers if needed.
                     self._buffers.clear()
                     self._available_buffers.clear()
-                    raise # Re-raise the exception
-            
+                    raise  # Re-raise the exception
+
             self._initialized = True
 
-    def checkout(self, timeout=None): # timeout is not used yet
+    def checkout(self, timeout=None):  # timeout is not used yet
         """
         Checks out a buffer from the pool.
-        
+
         Args:
             timeout: Not currently implemented.
-            
+
         Returns:
             A PooledBuffer object.
-            
+
         Raises:
             PoolExhaustedError: If no buffers are available.
             RuntimeError: If the pool is not initialized.
         """
         if not self._initialized:
-            raise RuntimeError("Memory pool is not initialized. Call initialize_pool() first.")
+            raise RuntimeError(
+                "Memory pool is not initialized. Call initialize_pool() first."
+            )
 
         with self._lock:
             if self._available_buffers:
                 buffer_wrapper = self._available_buffers.popleft()
-                buffer_wrapper.state = 'IN_USE'
+                buffer_wrapper.state = "IN_USE"
                 return buffer_wrapper
             else:
                 # Lock is released automatically when exiting 'with' block
@@ -115,10 +123,10 @@ class BaseMemoryPool:
     def checkin(self, buffer_wrapper: PooledBuffer):
         """
         Returns a buffer to the pool.
-        
+
         Args:
             buffer_wrapper: The PooledBuffer object to return.
-            
+
         Raises:
             ValueError: If the buffer does not belong to this pool or is not in use.
             RuntimeError: If the pool is not initialized.
@@ -130,14 +138,19 @@ class BaseMemoryPool:
         with self._lock:
             if buffer_wrapper._pool is not self:
                 raise ValueError("Buffer does not belong to this pool.")
-            if buffer_wrapper.state != 'IN_USE':
+            if buffer_wrapper.state != "IN_USE":
                 # Or handle idempotently if already available
-                raise ValueError(f"Buffer is not 'IN_USE', current state: {buffer_wrapper.state}.")
-            if not any(b is buffer_wrapper for b in self._buffers): # Check if it's one of our managed buffers
-                 raise ValueError("Buffer was not created by this pool (identity check failed).")
+                raise ValueError(
+                    f"Buffer is not 'IN_USE', current state: {buffer_wrapper.state}."
+                )
+            if not any(
+                b is buffer_wrapper for b in self._buffers
+            ):  # Check if it's one of our managed buffers
+                raise ValueError(
+                    "Buffer was not created by this pool (identity check failed)."
+                )
 
-
-            buffer_wrapper.state = 'AVAILABLE'
+            buffer_wrapper.state = "AVAILABLE"
             self._available_buffers.append(buffer_wrapper)
 
     def get_stats(self):
@@ -145,11 +158,16 @@ class BaseMemoryPool:
         Returns statistics about the pool's buffer usage.
         """
         if not self._initialized:
-            return {'total': self.num_buffers, 'available': 0, 'in_use': 0, 'initialized': False}
-        
-        with self._lock: # Ensure consistent read of available_buffers length
+            return {
+                "total": self.num_buffers,
+                "available": 0,
+                "in_use": 0,
+                "initialized": False,
+            }
+
+        with self._lock:  # Ensure consistent read of available_buffers length
             available_count = len(self._available_buffers)
-        
+
         # Calculate in_use based on total and available, as buffers list might not reflect current state directly
         # without iterating and checking state, which is less efficient.
         # The number of buffers in _buffers that are not in _available_buffers.
@@ -157,12 +175,12 @@ class BaseMemoryPool:
         # in_use_count = sum(1 for buf in self._buffers if buf.state == 'IN_USE')
         # However, using num_buffers - available_count is simpler if checkout/checkin logic is sound.
         in_use_count = self.num_buffers - available_count
-        
+
         return {
-            'total': self.num_buffers,
-            'available': available_count,
-            'in_use': in_use_count,
-            'initialized': self._initialized
+            "total": self.num_buffers,
+            "available": available_count,
+            "in_use": in_use_count,
+            "initialized": self._initialized,
         }
 
     def release_all_buffers(self):
@@ -178,15 +196,16 @@ class BaseMemoryPool:
         with self._lock:
             self._available_buffers.clear()
             for buffer_wrapper in self._buffers:
-                buffer_wrapper.state = 'AVAILABLE'
+                buffer_wrapper.state = "AVAILABLE"
                 self._available_buffers.append(buffer_wrapper)
-            
+
             # Sanity check
             if len(self._available_buffers) != self.num_buffers:
                 # This might indicate an issue if some buffers were lost or duplicated
-                print(f"Warning: After release_all_buffers, available count ({len(self._available_buffers)}) "
-                      f"does not match total buffers ({self.num_buffers}).")
-
+                print(
+                    f"Warning: After release_all_buffers, available count ({len(self._available_buffers)}) "
+                    f"does not match total buffers ({self.num_buffers})."
+                )
 
     def destroy_pool(self):
         """
@@ -200,12 +219,12 @@ class BaseMemoryPool:
             # Explicitly deleting arrays might be needed if they hold external resources
             # not managed by Python's GC or CuPy's pool (e.g., registered interop resources).
             # For simple np.empty/cp.empty, clearing lists should be sufficient.
-            
+
             for buf in self._buffers:
                 # If buffers need explicit cleanup beyond GC, do it here.
                 # e.g., if PooledBuffer held a custom resource.
-                del buf.array # Remove reference to the array; let GC handle it
-            
+                del buf.array  # Remove reference to the array; let GC handle it
+
             self._buffers.clear()
             self._available_buffers.clear()
             self._initialized = False
@@ -216,9 +235,10 @@ class NumpyMemoryPool(BaseMemoryPool):
     """
     A memory pool for NumPy arrays.
     """
+
     def __init__(self, buffer_shape, dtype, num_buffers):
         super().__init__(buffer_shape, dtype, num_buffers)
-        self.initialize_pool() # Automatically initialize upon creation
+        self.initialize_pool()  # Automatically initialize upon creation
 
     def _create_buffer(self):
         # numpy is already imported as np at the module level
@@ -230,18 +250,20 @@ class CupyMemoryPool(BaseMemoryPool):
     A memory pool for CuPy arrays.
     Requires CuPy to be installed.
     """
+
     def __init__(self, buffer_shape, dtype, num_buffers):
         super().__init__(buffer_shape, dtype, num_buffers)
         # Ensure CuPy is available before trying to initialize the pool with it
         try:
-            import cupy # Check if cupy can be imported
+            import cupy  # Check if cupy can be imported
         except ImportError:
             raise ImportError("CupyMemoryPool requires CuPy to be installed.")
-        
-        self.initialize_pool() # Automatically initialize upon creation
+
+        self.initialize_pool()  # Automatically initialize upon creation
 
     def _create_buffer(self):
-        import cupy as cp # Import locally to ensure it's available here
+        import cupy as cp  # Import locally to ensure it's available here
+
         return cp.empty(self.buffer_shape, dtype=self.dtype)
 
     def destroy_pool(self):
@@ -260,8 +282,8 @@ class CupyMemoryPool(BaseMemoryPool):
                 # This breaks the PooledBuffer's reference to the array.
                 # CuPy's memory pool will reclaim the GPU memory when its
                 # internal reference count for that block drops to zero.
-                del buf_wrapper.array 
-            
+                del buf_wrapper.array
+
             self._buffers.clear()
             self._available_buffers.clear()
             self._initialized = False

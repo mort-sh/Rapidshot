@@ -30,14 +30,21 @@ def _format_hresult(hr: int) -> str:
 def _is_dxgi_not_found(com_error: comtypes.COMError) -> bool:
     if not com_error.args:
         return False
-    return ctypes.c_int32(com_error.args[0]).value == ctypes.c_int32(DXGI_ERROR_NOT_FOUND).value
+    return (
+        ctypes.c_int32(com_error.args[0]).value
+        == ctypes.c_int32(DXGI_ERROR_NOT_FOUND).value
+    )
 
 
 def _create_dxgi_factory1() -> ctypes.POINTER(IDXGIFactory1):
     factory_ptr = ctypes.c_void_p()
-    hr = CreateLatestDXGIFactory(ctypes.byref(IDXGIFactory1._iid_), ctypes.byref(factory_ptr))
+    hr = CreateLatestDXGIFactory(
+        ctypes.byref(IDXGIFactory1._iid_), ctypes.byref(factory_ptr)
+    )
     if ctypes.c_long(hr).value < 0 or not factory_ptr.value:
-        raise RuntimeError(f"Unable to create DXGI factory. HRESULT={_format_hresult(hr)}")
+        raise RuntimeError(
+            f"Unable to create DXGI factory. HRESULT={_format_hresult(hr)}"
+        )
     return ctypes.cast(factory_ptr, ctypes.POINTER(IDXGIFactory1))
 
 
@@ -51,7 +58,9 @@ def _enum_adapters_with_factory1(
             p_adapter = ctypes.POINTER(IDXGIAdapter1)()
             dxgi_factory.EnumAdapters1(i, ctypes.byref(p_adapter))
             if not bool(p_adapter):
-                logger.warning("EnumAdapters1 returned a null adapter pointer at index %d", i)
+                logger.warning(
+                    "EnumAdapters1 returned a null adapter pointer at index %d", i
+                )
                 break
             p_adapters.append(p_adapter)
             i += 1
@@ -79,7 +88,8 @@ def _enum_adapters_with_factory6(
             )
             if not adapter_void.value:
                 logger.warning(
-                    "EnumAdapterByGpuPreference returned a null adapter pointer at index %d", i
+                    "EnumAdapterByGpuPreference returned a null adapter pointer at index %d",
+                    i,
                 )
                 break
             p_adapters.append(ctypes.cast(adapter_void, ctypes.POINTER(IDXGIAdapter1)))
@@ -104,10 +114,10 @@ def enum_dxgi_adapters_with_preference(
     """
     Enumerate DXGI adapters with a preference for high performance or power efficiency.
     Falls back to standard enumeration if DXGI 1.6 is not available.
-    
+
     Args:
         gpu_preference: DXGI_GPU_PREFERENCE value
-        
+
     Returns:
         List of adapter pointers
     """
@@ -116,7 +126,9 @@ def enum_dxgi_adapters_with_preference(
         try:
             dxgi_factory6 = dxgi_factory.QueryInterface(IDXGIFactory6)
             p_adapters = _enum_adapters_with_factory6(dxgi_factory6, gpu_preference)
-            logger.info(f"Enumerated {len(p_adapters)} adapters using DXGI 1.6 EnumAdapterByGpuPreference")
+            logger.info(
+                f"Enumerated {len(p_adapters)} adapters using DXGI 1.6 EnumAdapterByGpuPreference"
+            )
             return p_adapters
 
         except comtypes.COMError as ce:

@@ -20,7 +20,9 @@ import av
 from pynput import keyboard
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
 def _select_capture_device() -> int:
@@ -37,7 +39,9 @@ def _select_capture_device() -> int:
             logging.info("Selected NVIDIA capture device index: %s", selected_idx)
             return selected_idx
 
-    logging.info("No NVIDIA device line found in device_info(); falling back to device index 0.")
+    logging.info(
+        "No NVIDIA device line found in device_info(); falling back to device index 0."
+    )
     return 0
 
 
@@ -76,7 +80,9 @@ class InstantReplayRecorder:
         )
         self.screencapture.start(target_fps=self.target_fps, video_mode=True)
 
-        logging.info("InstantReplayRecorder initialized. Press Ctrl+Alt+H to save replay, Ctrl+Alt+I to stop.")
+        logging.info(
+            "InstantReplayRecorder initialized. Press Ctrl+Alt+H to save replay, Ctrl+Alt+I to stop."
+        )
 
     def _create_container(self):
         """Creates a new AV container and stream for recording the replay."""
@@ -91,7 +97,11 @@ class InstantReplayRecorder:
 
     def save_replay(self):
         """Saves the current buffer as a replay video."""
-        logging.info("Saving Instant Replay for the last {} seconds...".format(self.replay_duration_sec))
+        logging.info(
+            "Saving Instant Replay for the last {} seconds...".format(
+                self.replay_duration_sec
+            )
+        )
         with self.buffer_lock:
             for idx, packet in enumerate(self.buffer):
                 packet.pts = packet.dts = idx
@@ -111,10 +121,9 @@ class InstantReplayRecorder:
 
     def run(self):
         """Runs the main loop for capturing frames and handling hotkeys."""
-        hotkey_listener = keyboard.GlobalHotKeys({
-            "<ctrl>+<alt>+h": self.save_replay,
-            "<ctrl>+<alt>+i": self.stop_record
-        })
+        hotkey_listener = keyboard.GlobalHotKeys(
+            {"<ctrl>+<alt>+h": self.save_replay, "<ctrl>+<alt>+i": self.stop_record}
+        )
         hotkey_listener.start()
         logging.info("Hotkey listener started. Awaiting input...")
 

@@ -2,6 +2,7 @@
 Wrapper script to run RapidShot benchmarks.
 This avoids issues with bash stdin redirection on Windows.
 """
+
 import subprocess
 import sys
 

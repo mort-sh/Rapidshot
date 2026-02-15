@@ -46,10 +46,7 @@ def make_capture(width, height):
 def test_region_to_memory_region(rotation, surface_size, region, expected):
     capture = make_capture(8, 6)
     output = DummyOutput(surface_size, rotation)
-    assert (
-        capture.region_to_memory_region(region, rotation, output)
-        == expected
-    )
+    assert capture.region_to_memory_region(region, rotation, output) == expected
 
 
 def test_region_to_memory_region_rotation_mismatch():

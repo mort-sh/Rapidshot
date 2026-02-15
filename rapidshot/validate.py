@@ -44,7 +44,9 @@ def main() -> int:
 
     py_files = _tracked_python_files()
     if py_files:
-        _run_step("Compiling Python files", [sys.executable, "-m", "py_compile", *py_files])
+        _run_step(
+            "Compiling Python files", [sys.executable, "-m", "py_compile", *py_files]
+        )
     else:
         _log("No Python files found; skipping compile check")
 
@@ -55,14 +57,20 @@ def main() -> int:
         _log("No tests directory found; skipping pytest")
 
     if shutil.which("ruff"):
-        _run_step("Running ruff check", ["ruff", "check", "rapidshot", "tests", "diagnostic_script.py"])
+        _run_step(
+            "Running ruff check",
+            ["ruff", "check", "rapidshot", "tests", "diagnostic_script.py"],
+        )
     else:
         _log("ruff not installed; skipping lint")
 
     if os.environ.get("RAPIDSHOT_VALIDATE_DIAGNOSTIC", "0") == "1":
         diagnostic_script = ROOT_DIR / "diagnostic_script.py"
         if diagnostic_script.is_file():
-            _run_step("Running DirectX diagnostic script", [sys.executable, str(diagnostic_script)])
+            _run_step(
+                "Running DirectX diagnostic script",
+                [sys.executable, str(diagnostic_script)],
+            )
         else:
             _log("diagnostic_script.py not found; skipping diagnostic pass")
 

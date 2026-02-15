@@ -13,6 +13,7 @@ class StageSurface:
     """
     Staging surface for efficient copying from GPU to CPU memory.
     """
+
     width: ctypes.c_uint32 = 0
     height: ctypes.c_uint32 = 0
     dxgi_format: ctypes.c_uint32 = DXGI_FORMAT_B8G8R8A8_UNORM
@@ -25,7 +26,7 @@ class StageSurface:
     def __post_init__(self, output, device) -> None:
         """
         Initialize the staging surface.
-        
+
         Args:
             output: Output associated with the surface
             device: Device for creating the surface
@@ -45,10 +46,12 @@ class StageSurface:
             self.texture = None
             self.interface = None
 
-    def rebuild(self, output: Output, device: Device, dim: Optional[Tuple[int, int]] = None):
+    def rebuild(
+        self, output: Output, device: Device, dim: Optional[Tuple[int, int]] = None
+    ):
         """
         Rebuild the staging surface.
-        
+
         Args:
             output: Output associated with the surface
             device: Device for creating the surface
@@ -73,21 +76,21 @@ class StageSurface:
             self.desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ
             self.desc.MiscFlags = 0
             self.desc.BindFlags = 0
-            
+
             self.texture = ctypes.POINTER(ID3D11Texture2D)()
             device.device.CreateTexture2D(
                 ctypes.byref(self.desc),
                 None,
                 ctypes.byref(self.texture),
             )
-            
+
             # Cache the surface interface for improved performance
             self.interface = self.texture.QueryInterface(IDXGISurface)
 
     def map(self) -> DXGI_MAPPED_RECT:
         """
         Map the surface to system memory.
-        
+
         Returns:
             Mapped rectangle
         """
@@ -114,7 +117,7 @@ class StageSurface:
     def __repr__(self) -> str:
         """
         String representation.
-        
+
         Returns:
             String representation
         """

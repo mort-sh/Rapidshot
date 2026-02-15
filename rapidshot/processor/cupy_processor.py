@@ -10,28 +10,31 @@ from rapidshot.util.ctypes_helpers import pointer_to_address
 # Configure logging
 logger = logging.getLogger(__name__)
 
+
 class CupyProcessor:
     """
     CUDA-accelerated processor using CuPy.
     """
+
     # Class attribute to identify the backend type
     BACKEND_TYPE = ProcessorBackends.CUPY
-    
+
     # Minimum required CuPy version
     MIN_CUPY_VERSION = "10.0.0"
-    
+
     def __init__(self, color_mode):
         """
         Initialize the processor.
-        
+
         Args:
             color_mode: Color format (RGB, RGBA, BGR, BGRA, GRAY)
         """
         # Import CuPy in constructor to delay import until needed
         try:
             import cupy as cp
+
             self.cp = cp
-            
+
             # Check version compatibility
             version = cp.__version__
             if version < self.MIN_CUPY_VERSION:
@@ -42,10 +45,10 @@ class CupyProcessor:
                 )
                 logger.warning(warning_msg)
                 warnings.warn(warning_msg, RuntimeWarning, stacklevel=2)
-                
+
                 # Continue with available functionality
                 self._check_for_critical_cupy_features()
-                
+
         except ImportError as e:
             # Get platform-specific installation instructions
             install_cmd = self._get_platform_specific_cupy_install()
@@ -57,23 +60,26 @@ class CupyProcessor:
             )
             logger.error(error_msg)
             raise ImportError(error_msg) from e
-            
+
         self.cvtcolor = None
         self.color_mode = color_mode
-        
+
         # Try importing cuCV now to give early warning
         try:
             import cucv.cv2
+
             self._has_cucv = True
             logger.info("Using cuCV for color conversion (GPU accelerated)")
         except ImportError:
             self._has_cucv = False
-            logger.info("cuCV not found, falling back to regular OpenCV for color conversion")
-            
+            logger.info(
+                "cuCV not found, falling back to regular OpenCV for color conversion"
+            )
+
         # Simplified processing for BGRA
-        if self.color_mode == 'BGRA':
+        if self.color_mode == "BGRA":
             self.color_mode = None
-    
+
     def _check_for_critical_cupy_features(self):
         """
         Check for critical CuPy features needed by the processor.
@@ -88,7 +94,7 @@ class CupyProcessor:
             self.cp.asarray(test_array)
             # Test memory allocation
             self.cp.frombuffer(b"test", dtype=self.cp.uint8)
-            
+
             logger.debug("All required CuPy features are available")
         except AttributeError as e:
             warning_msg = (
@@ -97,11 +103,11 @@ class CupyProcessor:
             )
             logger.warning(warning_msg)
             warnings.warn(warning_msg, RuntimeWarning, stacklevel=2)
-    
+
     def _get_platform_specific_cupy_install(self):
         """
         Get platform-specific installation instructions for CuPy.
-        
+
         Returns:
             String with installation instructions
         """
@@ -142,10 +148,10 @@ class CupyProcessor:
     def process_cvtcolor(self, image):
         """
         Convert color format using cuCV or OpenCV.
-        
+
         Args:
             image: Image to convert
-            
+
         Returns:
             Converted image
         """
@@ -154,7 +160,9 @@ class CupyProcessor:
             try:
                 import cucv.cv2 as cv2
             except ImportError as e:
-                logger.warning(f"Failed to import cuCV, falling back to regular OpenCV: {e}")
+                logger.warning(
+                    f"Failed to import cuCV, falling back to regular OpenCV: {e}"
+                )
                 import cv2
         else:
             try:
@@ -166,7 +174,7 @@ class CupyProcessor:
                 )
                 logger.error(error_msg)
                 raise ImportError(error_msg) from e
-            
+
         # Initialize color conversion function once
         if self.cvtcolor is None:
             try:
@@ -174,27 +182,29 @@ class CupyProcessor:
                     "RGB": cv2.COLOR_BGRA2RGB,
                     "RGBA": cv2.COLOR_BGRA2RGBA,
                     "BGR": cv2.COLOR_BGRA2BGR,
-                    "GRAY": cv2.COLOR_BGRA2GRAY
+                    "GRAY": cv2.COLOR_BGRA2GRAY,
                 }
-                
+
                 if self.color_mode not in color_mapping:
                     error_msg = f"Unsupported color mode: {self.color_mode}. Supported modes: {list(color_mapping.keys())}"
                     logger.error(error_msg)
                     raise ValueError(error_msg)
-                    
+
                 cv2_code = color_mapping[self.color_mode]
-                
+
                 # Create appropriate converter function
                 if cv2_code != cv2.COLOR_BGRA2GRAY:
                     self.cvtcolor = lambda img: cv2.cvtColor(img, cv2_code)
                 else:
                     # Add axis for grayscale to maintain shape consistency
-                    self.cvtcolor = lambda img: cv2.cvtColor(img, cv2_code)[..., self.cp.newaxis]
+                    self.cvtcolor = lambda img: cv2.cvtColor(img, cv2_code)[
+                        ..., self.cp.newaxis
+                    ]
             except Exception as e:
                 error_msg = f"Failed to initialize color conversion: {e}"
                 logger.error(error_msg)
                 raise RuntimeError(error_msg) from e
-                
+
         try:
             return self.cvtcolor(image)
         except Exception as e:
@@ -205,7 +215,7 @@ class CupyProcessor:
     def process(self, rect, width, height, region, rotation_angle, output_buffer=None):
         """
         Process a frame using GPU acceleration.
-        
+
         Args:
             rect: Mapped rectangle
             width: Width
@@ -219,8 +229,10 @@ class CupyProcessor:
         import numpy as np
 
         try:
-            if not hasattr(rect, 'pBits') or not rect.pBits:
-                raise ValueError(f"Invalid rect or pBits, cannot process. Rect type: {type(rect)}")
+            if not hasattr(rect, "pBits") or not rect.pBits:
+                raise ValueError(
+                    f"Invalid rect or pBits, cannot process. Rect type: {type(rect)}"
+                )
 
             pitch = int(rect.Pitch)
             src_address = pointer_to_address(rect.pBits)
@@ -229,17 +241,24 @@ class CupyProcessor:
 
             left, top, right, bottom = region
             if not (0 <= left < right <= width) or not (0 <= top < bottom <= height):
-                raise ValueError(f"Region {region} is outside of the frame dimensions {(width, height)}")
+                raise ValueError(
+                    f"Region {region} is outside of the frame dimensions {(width, height)}"
+                )
 
             region_height = bottom - top
             region_width = right - left
 
             if output_buffer is None:
-                output_buffer = self.cp.empty((region_height, region_width, 4), dtype=self.cp.uint8)
+                output_buffer = self.cp.empty(
+                    (region_height, region_width, 4), dtype=self.cp.uint8
+                )
                 is_pooled_buffer = False
             else:
                 is_pooled_buffer = True
-                if output_buffer.shape[:2] != (region_height, region_width) or output_buffer.shape[2] != 4:
+                if (
+                    output_buffer.shape[:2] != (region_height, region_width)
+                    or output_buffer.shape[2] != 4
+                ):
                     raise ValueError(
                         f"Output buffer shape {output_buffer.shape} does not match region shape "
                         f"({region_height}, {region_width}, 4)."
@@ -247,7 +266,9 @@ class CupyProcessor:
 
             row_bytes = region_width * 4
             total_pitch_bytes = pitch * region_height
-            src_buffer = (ctypes.c_ubyte * total_pitch_bytes).from_address(src_address + top * pitch)
+            src_buffer = (ctypes.c_ubyte * total_pitch_bytes).from_address(
+                src_address + top * pitch
+            )
             src_view = np.ctypeslib.as_array(src_buffer).reshape(region_height, pitch)
 
             if pitch == row_bytes and left == 0:
@@ -266,72 +287,89 @@ class CupyProcessor:
             else:
                 output_buffer[...] = cpu_region
 
-
             # Phase 2: Color Conversion and Rotation
-            current_array = output_buffer # Start with the pooled buffer (already has BGRA data)
+            current_array = (
+                output_buffer  # Start with the pooled buffer (already has BGRA data)
+            )
             is_still_pooled_buffer = is_pooled_buffer
 
             # Color Conversion
-            if self.color_mode is not None: # Not 'BGRA', so conversion is intended
+            if self.color_mode is not None:  # Not 'BGRA', so conversion is intended
                 # process_cvtcolor expects a CuPy array if _has_cucv, or NumPy if falling back to cv2
                 # Since current_array is CuPy, this is fine for cuCV.
                 # For OpenCV fallback, process_cvtcolor would need a NumPy array.
                 # Let's assume process_cvtcolor is adapted or handles CuPy array input.
                 # For now, we pass current_array. If it's OpenCV, it might involve implicit DtoH copy.
-                
+
                 # If using OpenCV (non-cuCV path), it's better to convert from the CPU numpy array
                 # *before* copying to output_buffer, or copy output_buffer to CPU, convert, copy back.
                 # This logic assumes process_cvtcolor can handle a CuPy array and returns a CuPy array.
-                
+
                 temp_for_conversion = current_array
                 # If not using cuCV, and process_cvtcolor expects NumPy, we need a DtoH copy
                 if not self._has_cucv:
-                    logger.debug("CupyProcessor: Using OpenCV for color conversion, involves DtoH copy.")
+                    logger.debug(
+                        "CupyProcessor: Using OpenCV for color conversion, involves DtoH copy."
+                    )
                     temp_for_conversion = self.cp.asnumpy(current_array)
 
-                converted_array = self.process_cvtcolor(temp_for_conversion) # process_cvtcolor returns array
+                converted_array = self.process_cvtcolor(
+                    temp_for_conversion
+                )  # process_cvtcolor returns array
 
                 # If OpenCV was used, converted_array is NumPy, convert back to CuPy
                 if not self._has_cucv and isinstance(converted_array, np.ndarray):
                     converted_array = self.cp.asarray(converted_array)
 
-                if converted_array.shape[0] == current_array.shape[0] and \
-                   converted_array.shape[1] == current_array.shape[1]:
-                    if converted_array.shape[2] != current_array.shape[2]: # Channel change
+                if (
+                    converted_array.shape[0] == current_array.shape[0]
+                    and converted_array.shape[1] == current_array.shape[1]
+                ):
+                    if (
+                        converted_array.shape[2] != current_array.shape[2]
+                    ):  # Channel change
                         current_array = converted_array
                         is_still_pooled_buffer = False
-                    elif converted_array.data.ptr != current_array.data.ptr: # Different memory block
+                    elif (
+                        converted_array.data.ptr != current_array.data.ptr
+                    ):  # Different memory block
                         if is_still_pooled_buffer:
                             current_array[:] = converted_array
                         # else current_array is already new, no need to copy to original output_buffer
-                else: # Height/width changed
-                    logger.warning("CuPy color conversion changed height/width, which is unexpected.")
+                else:  # Height/width changed
+                    logger.warning(
+                        "CuPy color conversion changed height/width, which is unexpected."
+                    )
                     current_array = converted_array
                     is_still_pooled_buffer = False
-            
+
             # Rotation
             if rotation_angle != 0:
                 k = (rotation_angle // 90) % 4
                 if k != 0:
                     rotated_array = self.cp.rot90(current_array, k=k)
-                    
-                    if rotated_array.shape[0] != current_array.shape[0] or \
-                       rotated_array.shape[1] != current_array.shape[1]:
+
+                    if (
+                        rotated_array.shape[0] != current_array.shape[0]
+                        or rotated_array.shape[1] != current_array.shape[1]
+                    ):
                         current_array = rotated_array
                         is_still_pooled_buffer = False
                     elif is_still_pooled_buffer:
                         current_array[:] = rotated_array
-                    else: # Shape is same, but current_array is already a new buffer
-                        current_array = rotated_array 
+                    else:  # Shape is same, but current_array is already a new buffer
+                        current_array = rotated_array
 
             return current_array, is_still_pooled_buffer
 
         except Exception as e:
             error_msg = f"Error processing frame with CuPy: {e}"
             logger.error(error_msg)
-            if output_buffer is not None and hasattr(output_buffer, 'fill'):
+            if output_buffer is not None and hasattr(output_buffer, "fill"):
                 try:
                     output_buffer.fill(0)
                 except Exception as fill_e:
-                    logger.error(f"Error filling CuPy output_buffer after another error: {fill_e}")
-            return output_buffer, False # Indicate buffer might be invalid
+                    logger.error(
+                        f"Error filling CuPy output_buffer after another error: {fill_e}"
+                    )
+            return output_buffer, False  # Indicate buffer might be invalid

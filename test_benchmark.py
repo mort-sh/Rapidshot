@@ -12,7 +12,7 @@ fps = 0
 
 # Create screencapture
 print("Creating screencapture...")
-screencapture = rapidshot.create(output_color='RGB', nvidia_gpu=False)
+screencapture = rapidshot.create(output_color="RGB", nvidia_gpu=False)
 print("Screencapture created")
 
 # Warm-up

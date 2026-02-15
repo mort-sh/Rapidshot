@@ -6,7 +6,9 @@ import ctypes
 from typing import Optional, Union
 
 
-def pointer_to_address(ptr: Union[int, ctypes.c_void_p, ctypes._Pointer]) -> Optional[int]:
+def pointer_to_address(
+    ptr: Union[int, ctypes.c_void_p, ctypes._Pointer],
+) -> Optional[int]:
     """Return the integer address represented by *ptr*.
 
     Parameters

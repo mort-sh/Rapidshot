@@ -22,5 +22,5 @@ while fps < 1000:
 
 end_time = time.perf_counter() - start_time
 
-print(f"{title}: {fps/end_time}")
+print(f"{title}: {fps / end_time}")
 screencapture.stop()

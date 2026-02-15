@@ -83,17 +83,15 @@ def main():
             "video.mp4", cv2.VideoWriter_fourcc(*"mp4v"), target_fps, (width, height)
         )
         if not writer.isOpened():
-            raise RuntimeError(
-                "Failed to initialize OpenCV VideoWriter for video.mp4."
-            )
+            raise RuntimeError("Failed to initialize OpenCV VideoWriter for video.mp4.")
 
-        print(f"Recording {total_frames/target_fps:.1f} seconds of video...")
+        print(f"Recording {total_frames / target_fps:.1f} seconds of video...")
         for i in range(total_frames):
             frame = screencapture.get_latest_frame()
             if frame is not None:
                 writer.write(frame)
             if (i + 1) % target_fps == 0:
-                print(f"  Frame {i+1}/{total_frames}")
+                print(f"  Frame {i + 1}/{total_frames}")
 
         print("Video saved to video.mp4")
     except KeyboardInterrupt:

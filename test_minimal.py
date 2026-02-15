@@ -5,7 +5,7 @@ print(rapidshot.get_version_info())
 
 print("\nTest 2: Create screencapture")
 try:
-    screencapture = rapidshot.create(output_color='RGB', nvidia_gpu=False)
+    screencapture = rapidshot.create(output_color="RGB", nvidia_gpu=False)
     print("Success: Screencapture created")
 
     print("\nTest 3: Grab one frame")
@@ -22,6 +22,7 @@ try:
 except Exception as e:
     print(f"Error: {e}")
     import traceback
+
     traceback.print_exc()
 
 print("\nTest 5: Clean up")

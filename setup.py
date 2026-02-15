@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-with open("README.md", "r", encoding='utf-8') as f:
+with open("README.md", "r", encoding="utf-8") as f:
     long_description = f.read()
 
 setup(
@@ -25,7 +25,7 @@ setup(
         "Operating System :: Microsoft :: Windows :: Windows 11",
         "Topic :: Multimedia :: Graphics",
         "Topic :: Multimedia :: Graphics :: Capture",
-        "Topic :: Multimedia :: Graphics :: Capture :: Screen Capture"
+        "Topic :: Multimedia :: Graphics :: Capture :: Screen Capture",
     ],
     install_requires=[
         "numpy>=1.19.0",
@@ -39,8 +39,8 @@ setup(
             "numpy>=1.19.0",
             "comtypes>=1.1.0",
             "opencv-python>=4.5.0",
-            "pillow>=8.0.0"
-        ]
+            "pillow>=8.0.0",
+        ],
     },
     python_requires=">=3.8",
 )

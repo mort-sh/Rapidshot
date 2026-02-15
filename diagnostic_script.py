@@ -44,7 +44,9 @@ def _install_trace_level() -> None:
 
     if not hasattr(logging.Logger, "trace"):
 
-        def trace(self: logging.Logger, message: str, *args: Any, **kwargs: Any) -> None:
+        def trace(
+            self: logging.Logger, message: str, *args: Any, **kwargs: Any
+        ) -> None:
             if self.isEnabledFor(TRACE_LEVEL_NUM):
                 self._log(TRACE_LEVEL_NUM, message, args, **kwargs)
 
@@ -184,7 +186,11 @@ class DiagnosticRenderer:
             "[bold cyan]DirectX + RapidShot health checks[/]\n"
             "[dim]Structured telemetry, rich diagnostics, and artifact traceability.[/]"
         )
-        self.console.print(Panel.fit(body, title=f"[bold magenta]{APP_NAME}[/]", border_style="magenta"))
+        self.console.print(
+            Panel.fit(
+                body, title=f"[bold magenta]{APP_NAME}[/]", border_style="magenta"
+            )
+        )
 
     def render_section(self, title: str) -> None:
         self.console.rule(f"[bold blue]{title}[/]")
@@ -194,7 +200,9 @@ class DiagnosticRenderer:
         duration_suffix = ""
         if event.duration_ms is not None:
             duration_suffix = f" [dim]({event.duration_ms:.1f} ms)[/]"
-        self.console.print(f"[bold {style}]{icon} {label:<4}[/] {event.message}{duration_suffix}")
+        self.console.print(
+            f"[bold {style}]{icon} {label:<4}[/] {event.message}{duration_suffix}"
+        )
 
         if event.details and self.verbosity >= VerbosityLevel.DEBUG:
             border = "bright_blue" if event.status == CheckStatus.INFO else style
@@ -208,7 +216,12 @@ class DiagnosticRenderer:
             )
 
     def render_kv_table(self, title: str, rows: Sequence[tuple[str, str]]) -> None:
-        table = Table(title=title, box=box.SIMPLE_HEAVY, header_style="bold cyan", show_lines=False)
+        table = Table(
+            title=title,
+            box=box.SIMPLE_HEAVY,
+            header_style="bold cyan",
+            show_lines=False,
+        )
         table.add_column("Key", style="bold white", no_wrap=True)
         table.add_column("Value", style="bright_white")
         for key, value in rows:
@@ -216,7 +229,9 @@ class DiagnosticRenderer:
         self.console.print(table)
 
     def render_block(self, title: str, content: str, style: str = "cyan") -> None:
-        self.console.print(Panel(content, title=title, border_style=style, padding=(0, 1)))
+        self.console.print(
+            Panel(content, title=title, border_style=style, padding=(0, 1))
+        )
 
     def render_exception(self, title: str, error: BaseException) -> None:
         self.console.print(
@@ -227,7 +242,11 @@ class DiagnosticRenderer:
             )
         )
         if self.verbosity >= VerbosityLevel.TRACE:
-            self.console.print(Traceback.from_exception(type(error), error, error.__traceback__, show_locals=True))
+            self.console.print(
+                Traceback.from_exception(
+                    type(error), error, error.__traceback__, show_locals=True
+                )
+            )
 
     def render_telemetry_cards(
         self,
@@ -242,7 +261,9 @@ class DiagnosticRenderer:
         spark = build_sparkline(check_samples)
         duration_text = "n/a"
         if check_samples:
-            duration_text = f"min {min(check_samples):.1f} ms | max {max(check_samples):.1f} ms"
+            duration_text = (
+                f"min {min(check_samples):.1f} ms | max {max(check_samples):.1f} ms"
+            )
 
         cards = [
             Panel(
@@ -276,7 +297,11 @@ class DiagnosticRenderer:
         self.console.print(Columns(cards, expand=True, equal=True))
 
     def render_summary_table(self, events: Sequence[CheckEvent]) -> None:
-        table = Table(title="Diagnostic Summary", box=box.MINIMAL_DOUBLE_HEAD, header_style="bold magenta")
+        table = Table(
+            title="Diagnostic Summary",
+            box=box.MINIMAL_DOUBLE_HEAD,
+            header_style="bold magenta",
+        )
         table.add_column("Status", style="bold")
         table.add_column("Count", justify="right")
 
@@ -288,15 +313,27 @@ class DiagnosticRenderer:
         self.console.print(table)
 
     def render_issue_lists(self, events: Sequence[CheckEvent]) -> None:
-        failures = [event.message for event in events if event.status == CheckStatus.FAIL]
-        warnings = [event.message for event in events if event.status == CheckStatus.WARN]
+        failures = [
+            event.message for event in events if event.status == CheckStatus.FAIL
+        ]
+        warnings = [
+            event.message for event in events if event.status == CheckStatus.WARN
+        ]
 
         if failures:
-            self.render_block("Failed Checks", "\n".join(f"- {line}" for line in failures), style="red")
+            self.render_block(
+                "Failed Checks",
+                "\n".join(f"- {line}" for line in failures),
+                style="red",
+            )
         if warnings:
-            self.render_block("Warnings", "\n".join(f"- {line}" for line in warnings), style="yellow")
+            self.render_block(
+                "Warnings", "\n".join(f"- {line}" for line in warnings), style="yellow"
+            )
         if not failures:
-            self.render_block("Outcome", "[bold green]All critical checks passed.[/]", style="green")
+            self.render_block(
+                "Outcome", "[bold green]All critical checks passed.[/]", style="green"
+            )
 
     def render_file_spotlight(
         self,
@@ -312,10 +349,16 @@ class DiagnosticRenderer:
         if bytes_written is not None:
             parts.append(f"[dim]{_format_bytes(bytes_written)}[/]")
         body = "\n".join(parts)
-        self.console.print(Panel.fit(body, title=f"{artifact_type} artifact", border_style="bright_cyan"))
+        self.console.print(
+            Panel.fit(
+                body, title=f"{artifact_type} artifact", border_style="bright_cyan"
+            )
+        )
 
     def render_artifacts(self, artifacts: Sequence[ArtifactRecord]) -> None:
-        table = Table(title="Written Artifacts", box=box.SIMPLE_HEAVY, header_style="bold cyan")
+        table = Table(
+            title="Written Artifacts", box=box.SIMPLE_HEAVY, header_style="bold cyan"
+        )
         table.add_column("Type", style="bold white")
         table.add_column("Path", style="cyan")
         table.add_column("Size", justify="right", style="green")
@@ -330,6 +373,7 @@ class DiagnosticRenderer:
             )
         self.console.print(table)
 
+
 class ArtifactWriter:
     """Persist diagnostics artifacts with visible output spotlighting."""
 
@@ -338,15 +382,31 @@ class ArtifactWriter:
 
     def _record_artifact(self, artifact_type: str, path: Path) -> None:
         bytes_written = path.stat().st_size if path.exists() else 0
-        self.ctx.artifacts.append(ArtifactRecord(artifact_type=artifact_type, path=path, bytes_written=bytes_written))
+        self.ctx.artifacts.append(
+            ArtifactRecord(
+                artifact_type=artifact_type, path=path, bytes_written=bytes_written
+            )
+        )
 
     def write_text_report(self, total_seconds: float) -> Path:
         path = self.ctx.output_dir / DEFAULT_RESULTS_FILE
         self.ctx.renderer.render_file_spotlight("Text summary", path, "Writing")
 
-        pass_events = [event.message for event in self.ctx.events if event.status == CheckStatus.PASS]
-        warn_events = [event.message for event in self.ctx.events if event.status == CheckStatus.WARN]
-        fail_events = [event.message for event in self.ctx.events if event.status == CheckStatus.FAIL]
+        pass_events = [
+            event.message
+            for event in self.ctx.events
+            if event.status == CheckStatus.PASS
+        ]
+        warn_events = [
+            event.message
+            for event in self.ctx.events
+            if event.status == CheckStatus.WARN
+        ]
+        fail_events = [
+            event.message
+            for event in self.ctx.events
+            if event.status == CheckStatus.FAIL
+        ]
 
         lines = [
             f"RapidShot DirectX Diagnostic Results - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
@@ -374,7 +434,9 @@ class ArtifactWriter:
 
         path.write_text("\n".join(lines), encoding="utf-8")
         self._record_artifact("text-summary", path)
-        self.ctx.renderer.render_file_spotlight("Text summary", path, "Saved", bytes_written=path.stat().st_size)
+        self.ctx.renderer.render_file_spotlight(
+            "Text summary", path, "Saved", bytes_written=path.stat().st_size
+        )
         self.ctx.logger.info("Saved text summary report to %s", path)
         return path
 
@@ -397,12 +459,17 @@ class ArtifactWriter:
                 }
                 for event in self.ctx.events
             ],
-            "durations_ms": [{"section": section, "duration_ms": duration} for section, duration in self.ctx.durations],
+            "durations_ms": [
+                {"section": section, "duration_ms": duration}
+                for section, duration in self.ctx.durations
+            ],
         }
 
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         self._record_artifact("json-telemetry", path)
-        self.ctx.renderer.render_file_spotlight("JSON report", path, "Saved", bytes_written=path.stat().st_size)
+        self.ctx.renderer.render_file_spotlight(
+            "JSON report", path, "Saved", bytes_written=path.stat().st_size
+        )
         self.ctx.logger.info("Saved JSON telemetry report to %s", path)
         return path
 
@@ -416,7 +483,9 @@ class ArtifactWriter:
             self._record_artifact("log", log_path)
 
         size = log_path.stat().st_size if log_path.exists() else 0
-        self.ctx.renderer.render_file_spotlight("Log", log_path, "Finalized", bytes_written=size)
+        self.ctx.renderer.render_file_spotlight(
+            "Log", log_path, "Finalized", bytes_written=size
+        )
         return log_path
 
 
@@ -487,7 +556,9 @@ class DiagnosticRunner:
             self.ctx.logger.info("Starting check: %s", section_name)
 
             section_start = time.perf_counter()
-            with self.ctx.console.status(f"[bold cyan]Running {section_name}[/]", spinner="dots"):
+            with self.ctx.console.status(
+                f"[bold cyan]Running {section_name}[/]", spinner="dots"
+            ):
                 try:
                     check()
                 except Exception as error:
@@ -496,13 +567,17 @@ class DiagnosticRunner:
             self.ctx.durations.append((section_name, duration_ms))
 
             if self.ctx.verbosity >= VerbosityLevel.DEBUG:
-                self._emit(CheckStatus.INFO, "Section completed", duration_ms=duration_ms)
+                self._emit(
+                    CheckStatus.INFO, "Section completed", duration_ms=duration_ms
+                )
 
         total_seconds = time.perf_counter() - started
 
         self.current_section = "Telemetry"
         self.ctx.renderer.render_section("Telemetry")
-        self.ctx.renderer.render_telemetry_cards(self.ctx.events, self.ctx.durations, total_seconds)
+        self.ctx.renderer.render_telemetry_cards(
+            self.ctx.events, self.ctx.durations, total_seconds
+        )
 
         self.current_section = "Summary"
         self.ctx.renderer.render_section("Summary")
@@ -541,10 +616,16 @@ class DiagnosticRunner:
                     f"Windows {release} may have limited DirectX support. Windows 10+ is recommended.",
                 )
             else:
-                self._emit(CheckStatus.PASS, f"Windows {release} should support modern DirectX features.")
+                self._emit(
+                    CheckStatus.PASS,
+                    f"Windows {release} should support modern DirectX features.",
+                )
 
         if platform.architecture()[0] == "32bit":
-            self._emit(CheckStatus.WARN, "32-bit Python detected. 64-bit Python is recommended.")
+            self._emit(
+                CheckStatus.WARN,
+                "32-bit Python detected. 64-bit Python is recommended.",
+            )
         else:
             self._emit(CheckStatus.PASS, "64-bit Python detected.")
 
@@ -569,16 +650,23 @@ class DiagnosticRunner:
 
                 if module_name == "numpy" and version != "Unknown":
                     if _parse_version(version) < _parse_version(minimum):
-                        self._emit(CheckStatus.WARN, f"{message} (minimum recommended: {minimum})")
+                        self._emit(
+                            CheckStatus.WARN,
+                            f"{message} (minimum recommended: {minimum})",
+                        )
                     else:
                         self._emit(CheckStatus.PASS, message)
                 else:
                     self._emit(CheckStatus.PASS, message)
             except ImportError:
                 if optional:
-                    self._emit(CheckStatus.WARN, f"Optional dependency missing: {module_name}")
+                    self._emit(
+                        CheckStatus.WARN, f"Optional dependency missing: {module_name}"
+                    )
                 else:
-                    self._emit(CheckStatus.FAIL, f"Required dependency missing: {module_name}")
+                    self._emit(
+                        CheckStatus.FAIL, f"Required dependency missing: {module_name}"
+                    )
                     all_required_ok = False
 
         return all_required_ok
@@ -604,7 +692,12 @@ class DiagnosticRunner:
 
             info = ctypes.c_void_p()
             length = wintypes.UINT()
-            if not query_value(blob, r"\VarFileInfo\Translation", ctypes.byref(info), ctypes.byref(length)):
+            if not query_value(
+                blob,
+                r"\VarFileInfo\Translation",
+                ctypes.byref(info),
+                ctypes.byref(length),
+            ):
                 return None
 
             struct_fmt = "hhhh"
@@ -612,8 +705,12 @@ class DiagnosticRunner:
             info_data = ctypes.string_at(info.value, info_size)
             language, codepage = struct.unpack(struct_fmt, info_data)[:2]
 
-            version_path = f"\\StringFileInfo\\{language:04x}{codepage:04x}\\FileVersion"
-            if not query_value(blob, version_path, ctypes.byref(info), ctypes.byref(length)):
+            version_path = (
+                f"\\StringFileInfo\\{language:04x}{codepage:04x}\\FileVersion"
+            )
+            if not query_value(
+                blob, version_path, ctypes.byref(info), ctypes.byref(length)
+            ):
                 return None
 
             return ctypes.wstring_at(info.value, length.value - 1)
@@ -646,7 +743,9 @@ class DiagnosticRunner:
         if all_essential_available:
             self._emit(CheckStatus.PASS, "All essential DirectX DLLs are available.")
         else:
-            self._emit(CheckStatus.FAIL, "One or more essential DirectX DLLs are missing.")
+            self._emit(
+                CheckStatus.FAIL, "One or more essential DirectX DLLs are missing."
+            )
 
         return all_essential_available
 
@@ -667,9 +766,15 @@ class DiagnosticRunner:
                     ("Name", name),
                     ("Driver Version", str(getattr(gpu, "DriverVersion", "Unknown"))),
                     ("Driver Date", str(getattr(gpu, "DriverDate", "Unknown"))),
-                    ("Video Mode", str(getattr(gpu, "VideoModeDescription", "Unknown"))),
+                    (
+                        "Video Mode",
+                        str(getattr(gpu, "VideoModeDescription", "Unknown")),
+                    ),
                     ("Adapter RAM", f"{int(adapter_ram) / 1024 / 1024:.2f} MB"),
-                    ("Compatibility", str(getattr(gpu, "AdapterCompatibility", "Unknown"))),
+                    (
+                        "Compatibility",
+                        str(getattr(gpu, "AdapterCompatibility", "Unknown")),
+                    ),
                 ]
                 self.ctx.renderer.render_kv_table(f"GPU {index}", rows)
 
@@ -680,12 +785,17 @@ class DiagnosticRunner:
                     self._emit(CheckStatus.WARN, f"Unknown GPU vendor: {name}")
 
             if not known_vendor_found:
-                self._emit(CheckStatus.WARN, "No known DirectX-optimized GPU vendor detected.")
+                self._emit(
+                    CheckStatus.WARN, "No known DirectX-optimized GPU vendor detected."
+                )
 
             return True
 
         except ImportError:
-            self._emit(CheckStatus.WARN, "WMI package not installed; falling back to dxdiag parsing.")
+            self._emit(
+                CheckStatus.WARN,
+                "WMI package not installed; falling back to dxdiag parsing.",
+            )
             return self._gpu_info_from_dxdiag()
         except Exception as error:
             self._capture_exception("Failed to gather GPU info", error)
@@ -694,10 +804,14 @@ class DiagnosticRunner:
     def _gpu_info_from_dxdiag(self) -> bool:
         temp_path: Path | None = None
         try:
-            with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as temporary_file:
+            with tempfile.NamedTemporaryFile(
+                suffix=".txt", delete=False
+            ) as temporary_file:
                 temp_path = Path(temporary_file.name)
 
-            self._emit(CheckStatus.INFO, "Collecting dxdiag output for GPU fallback telemetry.")
+            self._emit(
+                CheckStatus.INFO, "Collecting dxdiag output for GPU fallback telemetry."
+            )
             subprocess.run(["dxdiag", "/t", str(temp_path)], check=True)
             time.sleep(1.5)
 
@@ -710,18 +824,32 @@ class DiagnosticRunner:
                     capture = True
                     continue
                 if capture and stripped.startswith("Card name"):
-                    card_name = stripped.split(":", 1)[1].strip() if ":" in stripped else "Unknown"
+                    card_name = (
+                        stripped.split(":", 1)[1].strip()
+                        if ":" in stripped
+                        else "Unknown"
+                    )
                     card_names.append(card_name)
 
             if card_names:
                 for card_name in card_names:
-                    if any(vendor in card_name for vendor in ("NVIDIA", "AMD", "ATI", "Intel")):
-                        self._emit(CheckStatus.PASS, f"dxdiag GPU detected: {card_name}")
+                    if any(
+                        vendor in card_name
+                        for vendor in ("NVIDIA", "AMD", "ATI", "Intel")
+                    ):
+                        self._emit(
+                            CheckStatus.PASS, f"dxdiag GPU detected: {card_name}"
+                        )
                     else:
-                        self._emit(CheckStatus.WARN, f"dxdiag detected unknown GPU vendor: {card_name}")
+                        self._emit(
+                            CheckStatus.WARN,
+                            f"dxdiag detected unknown GPU vendor: {card_name}",
+                        )
                 return True
 
-            self._emit(CheckStatus.WARN, "dxdiag completed but no GPU card names were parsed.")
+            self._emit(
+                CheckStatus.WARN, "dxdiag completed but no GPU card names were parsed."
+            )
             return True
 
         except Exception as error:
@@ -743,7 +871,11 @@ class DiagnosticRunner:
         )
 
         factory_versions: list[dict[str, Any]] = [
-            {"name": "DXGI 1.2+ (CreateDXGIFactory2)", "function": "CreateDXGIFactory2", "flags": 0},
+            {
+                "name": "DXGI 1.2+ (CreateDXGIFactory2)",
+                "function": "CreateDXGIFactory2",
+                "flags": 0,
+            },
             {"name": "DXGI 1.1 (CreateDXGIFactory1)", "function": "CreateDXGIFactory1"},
             {"name": "DXGI 1.0 (CreateDXGIFactory)", "function": "CreateDXGIFactory"},
         ]
@@ -765,17 +897,29 @@ class DiagnosticRunner:
                         ctypes.POINTER(comtypes.GUID),
                         ctypes.POINTER(ctypes.c_void_p),
                     ]
-                    hr = create_factory(version["flags"], ctypes.byref(RS_IDXGIFactory1._iid_), ctypes.byref(factory_ptr))
+                    hr = create_factory(
+                        version["flags"],
+                        ctypes.byref(RS_IDXGIFactory1._iid_),
+                        ctypes.byref(factory_ptr),
+                    )
                 else:
-                    create_factory.argtypes = [ctypes.POINTER(comtypes.GUID), ctypes.POINTER(ctypes.c_void_p)]
-                    hr = create_factory(ctypes.byref(RS_IDXGIFactory1._iid_), ctypes.byref(factory_ptr))
+                    create_factory.argtypes = [
+                        ctypes.POINTER(comtypes.GUID),
+                        ctypes.POINTER(ctypes.c_void_p),
+                    ]
+                    hr = create_factory(
+                        ctypes.byref(RS_IDXGIFactory1._iid_), ctypes.byref(factory_ptr)
+                    )
 
                 if hr == 0 and factory_ptr.value:
                     selected_factory = version
                     self._emit(CheckStatus.PASS, f"Created {version['name']}")
                     break
 
-                self._emit(CheckStatus.WARN, f"{version['name']} failed with HRESULT {format_hresult(hr)}")
+                self._emit(
+                    CheckStatus.WARN,
+                    f"{version['name']} failed with HRESULT {format_hresult(hr)}",
+                )
             except Exception as error:
                 self._emit(CheckStatus.WARN, f"{version['name']} raised error: {error}")
 
@@ -794,13 +938,23 @@ class DiagnosticRunner:
                     factory.EnumAdapters1(index, ctypes.byref(adapter))
                 except comtypes.COMError as error:
                     hresult = error.args[0] if error.args else None
-                    if hresult is not None and ctypes.c_int32(hresult).value == ctypes.c_int32(RS_DXGI_ERROR_NOT_FOUND).value:
+                    if (
+                        hresult is not None
+                        and ctypes.c_int32(hresult).value
+                        == ctypes.c_int32(RS_DXGI_ERROR_NOT_FOUND).value
+                    ):
                         break
-                    self._emit(CheckStatus.WARN, f"EnumAdapters1 stopped at index {index}: {error}")
+                    self._emit(
+                        CheckStatus.WARN,
+                        f"EnumAdapters1 stopped at index {index}: {error}",
+                    )
                     break
 
                 if not bool(adapter):
-                    self._emit(CheckStatus.WARN, f"EnumAdapters1 returned null adapter at index {index}")
+                    self._emit(
+                        CheckStatus.WARN,
+                        f"EnumAdapters1 returned null adapter at index {index}",
+                    )
                     break
 
                 try:
@@ -815,7 +969,9 @@ class DiagnosticRunner:
                         )
                     )
                 except Exception as error:
-                    self._emit(CheckStatus.WARN, f"Failed to describe adapter {index}: {error}")
+                    self._emit(
+                        CheckStatus.WARN, f"Failed to describe adapter {index}: {error}"
+                    )
                 finally:
                     release_com_ptr(adapter)
 
@@ -828,7 +984,9 @@ class DiagnosticRunner:
             release_com_ptr(factory)
 
         if adapter_rows:
-            table = Table(title="DXGI adapters", box=box.SIMPLE_HEAVY, header_style="bold cyan")
+            table = Table(
+                title="DXGI adapters", box=box.SIMPLE_HEAVY, header_style="bold cyan"
+            )
             table.add_column("Index", justify="right")
             table.add_column("Description")
             table.add_column("VRAM")
@@ -836,7 +994,9 @@ class DiagnosticRunner:
             for row in adapter_rows:
                 table.add_row(*row)
             self.ctx.console.print(table)
-            self._emit(CheckStatus.PASS, f"Found {len(adapter_rows)} graphics adapters.")
+            self._emit(
+                CheckStatus.PASS, f"Found {len(adapter_rows)} graphics adapters."
+            )
             return True
 
         self._emit(CheckStatus.FAIL, "No graphics adapters discovered by DXGI.")
@@ -880,7 +1040,9 @@ class DiagnosticRunner:
                 D3D_FEATURE_LEVEL_10_1,
                 D3D_FEATURE_LEVEL_10_0,
             ]
-            feature_levels_array = (ctypes.c_uint * len(feature_levels))(*feature_levels)
+            feature_levels_array = (ctypes.c_uint * len(feature_levels))(
+                *feature_levels
+            )
 
             device_ptr = ctypes.c_void_p()
             context_ptr = ctypes.c_void_p()
@@ -900,7 +1062,10 @@ class DiagnosticRunner:
             )
 
             if hr != 0:
-                self._emit(CheckStatus.WARN, f"Hardware device creation failed ({hr:#010x}), retrying with WARP")
+                self._emit(
+                    CheckStatus.WARN,
+                    f"Hardware device creation failed ({hr:#010x}), retrying with WARP",
+                )
                 device_ptr = ctypes.c_void_p()
                 context_ptr = ctypes.c_void_p()
                 feature_level = ctypes.c_uint(0)
@@ -921,15 +1086,23 @@ class DiagnosticRunner:
             if hr == 0 and device_ptr.value and context_ptr.value:
                 major = (feature_level.value >> 12) & 0xF
                 minor = (feature_level.value >> 8) & 0xF
-                self._emit(CheckStatus.PASS, f"D3D11 device created successfully at feature level {major}.{minor}")
+                self._emit(
+                    CheckStatus.PASS,
+                    f"D3D11 device created successfully at feature level {major}.{minor}",
+                )
 
                 device = ctypes.cast(device_ptr, ctypes.POINTER(RS_ID3D11Device))
-                context = ctypes.cast(context_ptr, ctypes.POINTER(RS_ID3D11DeviceContext))
+                context = ctypes.cast(
+                    context_ptr, ctypes.POINTER(RS_ID3D11DeviceContext)
+                )
                 release_com_ptr(context)
                 release_com_ptr(device)
                 return True
 
-            self._emit(CheckStatus.FAIL, f"D3D11 device creation failed: 0x{ctypes.c_uint32(hr).value:08X}")
+            self._emit(
+                CheckStatus.FAIL,
+                f"D3D11 device creation failed: 0x{ctypes.c_uint32(hr).value:08X}",
+            )
             return False
 
         except Exception as error:
@@ -942,15 +1115,26 @@ class DiagnosticRunner:
 
             create_factory = ctypes.windll.dxgi.CreateDXGIFactory1
             create_factory.restype = comtypes.HRESULT
-            create_factory.argtypes = [ctypes.POINTER(comtypes.GUID), ctypes.POINTER(ctypes.c_void_p)]
+            create_factory.argtypes = [
+                ctypes.POINTER(comtypes.GUID),
+                ctypes.POINTER(ctypes.c_void_p),
+            ]
 
             factory_ptr = ctypes.c_void_p(0)
-            hr = create_factory(ctypes.byref(RS_IDXGIFactory1._iid_), ctypes.byref(factory_ptr))
+            hr = create_factory(
+                ctypes.byref(RS_IDXGIFactory1._iid_), ctypes.byref(factory_ptr)
+            )
             if hr != 0 or not factory_ptr.value:
-                self._emit(CheckStatus.FAIL, f"Failed to create DXGI factory for duplication probe: {hr:#010x}")
+                self._emit(
+                    CheckStatus.FAIL,
+                    f"Failed to create DXGI factory for duplication probe: {hr:#010x}",
+                )
                 return False
 
-            self._emit(CheckStatus.PASS, "Desktop duplication prerequisite (DXGI factory) is operational.")
+            self._emit(
+                CheckStatus.PASS,
+                "Desktop duplication prerequisite (DXGI factory) is operational.",
+            )
             self._emit(
                 CheckStatus.INFO,
                 "Full DuplicateOutput probing is intentionally skipped in this lightweight diagnostic path.",
@@ -970,13 +1154,29 @@ class DiagnosticRunner:
         try:
             import rapidshot
 
-            self._emit(CheckStatus.PASS, f"Imported rapidshot from {rapidshot.__file__}")
-            self._emit(CheckStatus.PASS, f"RapidShot version: {getattr(rapidshot, '__version__', 'Unknown')}")
+            self._emit(
+                CheckStatus.PASS, f"Imported rapidshot from {rapidshot.__file__}"
+            )
+            self._emit(
+                CheckStatus.PASS,
+                f"RapidShot version: {getattr(rapidshot, '__version__', 'Unknown')}",
+            )
 
-            expected_attrs = ["create", "device_info", "output_info", "clean_up", "ScreenCapture"]
-            missing_attrs = [attr for attr in expected_attrs if not hasattr(rapidshot, attr)]
+            expected_attrs = [
+                "create",
+                "device_info",
+                "output_info",
+                "clean_up",
+                "ScreenCapture",
+            ]
+            missing_attrs = [
+                attr for attr in expected_attrs if not hasattr(rapidshot, attr)
+            ]
             if missing_attrs:
-                self._emit(CheckStatus.FAIL, f"Missing rapidshot attributes: {', '.join(missing_attrs)}")
+                self._emit(
+                    CheckStatus.FAIL,
+                    f"Missing rapidshot attributes: {', '.join(missing_attrs)}",
+                )
                 all_good = False
             else:
                 self._emit(CheckStatus.PASS, "Core rapidshot attributes are present.")
@@ -986,26 +1186,44 @@ class DiagnosticRunner:
 
                 self._emit(CheckStatus.PASS, "Imported rapidshot.core successfully.")
                 expected_core = ["Device", "Output", "Duplicator", "StageSurface"]
-                missing_core = [name for name in expected_core if not hasattr(rapidshot.core, name)]
+                missing_core = [
+                    name for name in expected_core if not hasattr(rapidshot.core, name)
+                ]
                 if missing_core:
-                    self._emit(CheckStatus.FAIL, f"Missing core symbols: {', '.join(missing_core)}")
+                    self._emit(
+                        CheckStatus.FAIL,
+                        f"Missing core symbols: {', '.join(missing_core)}",
+                    )
                     all_good = False
                 else:
-                    self._emit(CheckStatus.PASS, "rapidshot.core exports expected symbols.")
+                    self._emit(
+                        CheckStatus.PASS, "rapidshot.core exports expected symbols."
+                    )
             except Exception as error:
-                self._emit(CheckStatus.FAIL, f"Failed importing rapidshot.core: {error}")
+                self._emit(
+                    CheckStatus.FAIL, f"Failed importing rapidshot.core: {error}"
+                )
                 all_good = False
 
             try:
                 from rapidshot._libs import d3d11, dxgi
 
-                self._emit(CheckStatus.PASS, "Imported rapidshot._libs.d3d11 and rapidshot._libs.dxgi")
+                self._emit(
+                    CheckStatus.PASS,
+                    "Imported rapidshot._libs.d3d11 and rapidshot._libs.dxgi",
+                )
                 if not hasattr(d3d11, "D3D_FEATURE_LEVEL_11_0"):
-                    self._emit(CheckStatus.WARN, "D3D_FEATURE_LEVEL_11_0 missing in d3d11 module")
+                    self._emit(
+                        CheckStatus.WARN,
+                        "D3D_FEATURE_LEVEL_11_0 missing in d3d11 module",
+                    )
                 if not hasattr(dxgi, "IDXGIFactory1"):
                     self._emit(CheckStatus.WARN, "IDXGIFactory1 missing in dxgi module")
             except Exception as error:
-                self._emit(CheckStatus.FAIL, f"Failed importing DirectX library wrappers: {error}")
+                self._emit(
+                    CheckStatus.FAIL,
+                    f"Failed importing DirectX library wrappers: {error}",
+                )
                 all_good = False
 
             return all_good
@@ -1024,7 +1242,9 @@ class DiagnosticRunner:
                 self._emit(CheckStatus.PASS, "rapidshot.device_info() returned data")
                 self.ctx.renderer.render_block("Device info", rendered, style="cyan")
             else:
-                self._emit(CheckStatus.WARN, "rapidshot.device_info() returned empty data")
+                self._emit(
+                    CheckStatus.WARN, "rapidshot.device_info() returned empty data"
+                )
             return True
         except Exception as error:
             self._capture_exception("rapidshot.device_info() failed", error)
@@ -1040,7 +1260,9 @@ class DiagnosticRunner:
                 self._emit(CheckStatus.PASS, "rapidshot.output_info() returned data")
                 self.ctx.renderer.render_block("Output info", rendered, style="blue")
             else:
-                self._emit(CheckStatus.WARN, "rapidshot.output_info() returned empty data")
+                self._emit(
+                    CheckStatus.WARN, "rapidshot.output_info() returned empty data"
+                )
             return True
         except Exception as error:
             self._capture_exception("rapidshot.output_info() failed", error)
@@ -1055,18 +1277,25 @@ class DiagnosticRunner:
                 self._emit(CheckStatus.FAIL, "rapidshot.create() returned None")
                 return False
 
-            self._emit(CheckStatus.PASS, "rapidshot.create() returned a capture instance")
+            self._emit(
+                CheckStatus.PASS, "rapidshot.create() returned a capture instance"
+            )
             ok = True
 
             try:
                 frame = screen.grab()
                 if frame is not None:
                     height, width, channels = frame.shape
-                    self._emit(CheckStatus.PASS, f"Initial frame captured: {width}x{height}x{channels}")
+                    self._emit(
+                        CheckStatus.PASS,
+                        f"Initial frame captured: {width}x{height}x{channels}",
+                    )
                 else:
                     self._emit(CheckStatus.WARN, "Initial frame capture returned None")
             except Exception as error:
-                self._emit(CheckStatus.FAIL, f"Error during initial frame capture: {error}")
+                self._emit(
+                    CheckStatus.FAIL, f"Error during initial frame capture: {error}"
+                )
                 ok = False
 
             time.sleep(0.1)
@@ -1077,14 +1306,19 @@ class DiagnosticRunner:
                 else:
                     self._emit(CheckStatus.WARN, "Delayed frame capture returned None")
             except Exception as error:
-                self._emit(CheckStatus.FAIL, f"Error during delayed frame capture: {error}")
+                self._emit(
+                    CheckStatus.FAIL, f"Error during delayed frame capture: {error}"
+                )
                 ok = False
 
             try:
                 screen.release()
                 self._emit(CheckStatus.PASS, "Capture resources released")
             except Exception as error:
-                self._emit(CheckStatus.WARN, f"Failed releasing capture resources cleanly: {error}")
+                self._emit(
+                    CheckStatus.WARN,
+                    f"Failed releasing capture resources cleanly: {error}",
+                )
 
             try:
                 rapidshot.clean_up()
@@ -1099,7 +1333,9 @@ class DiagnosticRunner:
             return False
 
 
-def _create_logger(console: Console, log_path: Path, verbosity: VerbosityLevel) -> logging.Logger:
+def _create_logger(
+    console: Console, log_path: Path, verbosity: VerbosityLevel
+) -> logging.Logger:
     _install_trace_level()
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1128,7 +1364,9 @@ def _create_logger(console: Console, log_path: Path, verbosity: VerbosityLevel) 
     rich_handler.setLevel(logger_level)
 
     file_handler = logging.FileHandler(log_path, mode="w", encoding="utf-8")
-    file_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+    )
     file_handler.setLevel(TRACE_LEVEL_NUM)
 
     logger.addHandler(rich_handler)
@@ -1145,7 +1383,9 @@ def teardown_logging(logger: logging.Logger) -> None:
     logger.handlers.clear()
 
 
-def create_run_context(verbosity: VerbosityLevel, output_dir: Path, json_report: bool) -> RunContext:
+def create_run_context(
+    verbosity: VerbosityLevel, output_dir: Path, json_report: bool
+) -> RunContext:
     output_path = output_dir.expanduser().resolve()
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -1180,7 +1420,9 @@ def render_saved_summary(ctx: RunContext) -> int:
     log_path = ctx.output_dir / DEFAULT_LOG_FILE
 
     if summary_path.exists():
-        summary_text = summary_path.read_text(encoding="utf-8", errors="replace").strip()
+        summary_text = summary_path.read_text(
+            encoding="utf-8", errors="replace"
+        ).strip()
         renderer.render_block("Text summary", summary_text or "(empty)", style="green")
     else:
         renderer.render_event(

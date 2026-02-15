@@ -3,12 +3,21 @@ import rapidshot
 import argparse
 
 # Parse command line arguments
-parser = argparse.ArgumentParser(description='Rapidshot Max FPS Benchmark')
-parser.add_argument('--gpu', action='store_true', help='Use NVIDIA GPU acceleration')
-parser.add_argument('--color', default='RGB', choices=['RGB', 'BGRA', 'RGBA', 'BGR', 'GRAY'],
-                    help='Output color format')
-parser.add_argument('--region', nargs=4, type=int, default=[0, 0, 1920, 1080],
-                    help='Capture region (left top right bottom)')
+parser = argparse.ArgumentParser(description="Rapidshot Max FPS Benchmark")
+parser.add_argument("--gpu", action="store_true", help="Use NVIDIA GPU acceleration")
+parser.add_argument(
+    "--color",
+    default="RGB",
+    choices=["RGB", "BGRA", "RGBA", "BGR", "GRAY"],
+    help="Output color format",
+)
+parser.add_argument(
+    "--region",
+    nargs=4,
+    type=int,
+    default=[0, 0, 1920, 1080],
+    help="Capture region (left top right bottom)",
+)
 args = parser.parse_args()
 
 # Setup capture region
