@@ -159,6 +159,11 @@ class Duplicator:
             if last_present_time == 0:
                 logger.debug("No new frame content")
                 self.updated = False
+                # Release the resource reference since we won't process the frame
+                try:
+                    res.Release()
+                except Exception as release_err:
+                    logger.debug(f"Failed to release resource: {release_err}")
                 return True
 
             # Process the frame
@@ -166,9 +171,18 @@ class Duplicator:
                 queried_texture = res.QueryInterface(ID3D11Texture2D)
                 self.texture = queried_texture
                 self.updated = True
+                # Release the resource reference now that we have the texture
+                try:
+                    res.Release()
+                except Exception as release_err:
+                    logger.debug(f"Failed to release resource: {release_err}")
                 return True
             except comtypes.COMError as ce:
-                # If QueryInterface fails, release the frame before returning
+                # If QueryInterface fails, release the resource reference first, then the frame
+                try:
+                    res.Release()
+                except Exception as release_err:
+                    logger.debug(f"Failed to release resource during QueryInterface failure: {release_err}")
                 self.duplicator.ReleaseFrame()
                 self._frame_acquired = False
                 error_msg = f"Failed to query texture interface: {ce}"
@@ -181,6 +195,8 @@ class Duplicator:
             hresult = ce.args[0] if ce.args else None
             
             if hresult == DXGI_ERROR_WAIT_TIMEOUT:
+                # Timeout is not an error - just means no new frame is available
+                # Return True to indicate no reinitialization is needed
                 logger.debug("Frame acquisition timed out.")
                 self.updated = False
                 return True
