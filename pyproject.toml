@@ -7,12 +7,15 @@ name = "rapidshot"
 version = "1.1.0"
 description = "A high-performance screencapture library for Windows using Desktop Duplication API"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = "==3.8.*"
 license = { text = "MIT" }
-authors = [
-    { name = "RapidShot Contributors", email = "example@example.com" }
+authors = [{ name = "RapidShot Contributors", email = "example@example.com" }]
+keywords = [
+    "screencapture",
+    "desktop-duplication",
+    "screen-recorder",
+    "windows",
 ]
-keywords = ["screencapture", "desktop-duplication", "screen-recorder", "windows"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -27,12 +30,9 @@ classifiers = [
     "Operating System :: Microsoft :: Windows :: Windows 11",
     "Topic :: Multimedia :: Graphics",
     "Topic :: Multimedia :: Graphics :: Capture",
-    "Topic :: Multimedia :: Graphics :: Capture :: Screen Capture"
+    "Topic :: Multimedia :: Graphics :: Capture :: Screen Capture",
 ]
-dependencies = [
-    "numpy>=1.19.0",
-    "comtypes>=1.1.0",
-]
+dependencies = ["numpy>=1.19.0", "comtypes>=1.1.0"]
 
 [project.optional-dependencies]
 cv2 = ["opencv-python>=4.5.0"]
@@ -44,22 +44,21 @@ all = [
     "comtypes>=1.1.0",
     "opencv-python>=4.5.0",
     "pillow>=8.0.0",
-    "cupy-cuda11x>=11.0.0", # Added for default GPU support
+    "cupy-cuda12x>=12.0.0",
+    "av",
+    "pynput",
+    "opencv-python>=4.5.0", # Added for default GPU support
 ]
 dev = [
     "black>=22.3.0",
-    "isort>=5.10.1", 
+    "isort>=5.10.1",
     "mypy>=0.950",
     "pytest>=7.0.0",
     "pytest-cov>=3.0.0",
     "flake8>=4.0.1",
     "tox>=3.24.5",
 ]
-docs = [
-    "sphinx>=4.5.0",
-    "sphinx-rtd-theme>=1.0.0",
-    "myst-parser>=0.18.0",
-]
+docs = ["sphinx>=4.5.0", "sphinx-rtd-theme>=1.0.0", "myst-parser>=0.18.0"]
 
 [project.urls]
 "Homepage" = "https://github.com/Zaatra/Rapidshot"
@@ -67,8 +66,8 @@ docs = [
 "Source" = "https://github.com/Zaatra/Rapidshot"
 "Documentation" = "https://github.com/Zaatra/Rapidshot"
 
-[tool.setuptools.packages.find]
-include = ["rapidshot*"]
+[tool.setuptools]
+packages = { find = { include = ["rapidshot*"] } }
 
 [tool.black]
 line-length = 100
@@ -88,3 +87,9 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
+
+[tool.uv.sources]
+rapidshot = { workspace = true }
+
+[dependency-groups]
+gpu-cuda12 = ["rapidshot"]

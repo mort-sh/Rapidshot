@@ -63,7 +63,7 @@ class Duplicator:
     updated: bool = False
     output: InitVar[Output] = None
     device: InitVar[Device] = None
-    timeout_ms: int = 10  # Timeout for AcquireNextFrame in milliseconds
+    timeout_ms: int = 0  # Timeout for AcquireNextFrame in milliseconds (0 = non-blocking)
     cursor: Cursor = Cursor()
     last_error: str = ""
     cursor_visible: bool = False
@@ -101,11 +101,39 @@ class Duplicator:
             else:
                 raise RapidShotDXGIError(f"Failed to initialize duplicator: {ce}", hresult=hresult) from ce
 
-    def update_frame(self) -> None:
+    def _safe_release_resource(self, res) -> None:
         """
-        Update the frame and cursor state.
+        Safely release an IDXGIResource reference.
+        
+        Args:
+            res: The resource reference to release (ctypes.POINTER(IDXGIResource))
+        """
+        if res:
+            try:
+                res.Release()
+            except Exception as e:
+                logger.debug(f"Failed to release resource: {e}")
+
+    def update_frame(self) -> bool:
+        """
+        Update the frame and cursor state using non-blocking poll.
+        
         Sets self.updated to True if a new frame is available, False otherwise.
-        Raises exceptions for critical errors.
+        
+        Returns:
+            bool: True if the operation was successful (even if no new frame was available),
+                  False only for DXGI_ERROR_ACCESS_LOST which requires re-initialization.
+                  
+        Raises:
+            RapidShotDeviceError: For device-level errors (DEVICE_REMOVED, DEVICE_RESET)
+            RapidShotDXGIError: For other unexpected DXGI errors
+            RapidShotError: For unexpected Python exceptions
+            
+        Note:
+            - Returns True for WAIT_TIMEOUT (no new frame available yet)
+            - If a frame is acquired (self._frame_acquired = True), caller must call
+              release_frame() when done processing the texture
+            - The IDXGIResource reference is released automatically within this method
         """
         # Reset state for this update attempt
         self.updated = False
@@ -114,16 +142,14 @@ class Duplicator:
 
         info = DXGI_OUTDUPL_FRAME_INFO()
         res = ctypes.POINTER(IDXGIResource)()
-        frame_acquired = False
         
         try:
-            # Acquire the next frame with a short timeout
+            # Acquire the next frame with non-blocking poll
             self.duplicator.AcquireNextFrame(
                 self.timeout_ms,
                 ctypes.byref(info),
                 ctypes.byref(res),
             )
-            frame_acquired = True
             self._frame_acquired = True
             logger.debug("Frame acquired successfully")
             
@@ -160,6 +186,10 @@ class Duplicator:
             if last_present_time == 0:
                 logger.debug("No new frame content")
                 self.updated = False
+                # Release the resource reference and the frame since there's no new content
+                self._safe_release_resource(res)
+                self.duplicator.ReleaseFrame()
+                self._frame_acquired = False
                 return True
 
             # Process the frame
@@ -167,8 +197,14 @@ class Duplicator:
                 queried_texture = res.QueryInterface(ID3D11Texture2D)
                 self.texture = queried_texture
                 self.updated = True
+                # Release the resource reference now that we have the texture
+                self._safe_release_resource(res)
                 return True
             except comtypes.COMError as ce:
+                # If QueryInterface fails, release the resource reference first, then the frame
+                self._safe_release_resource(res)
+                self.duplicator.ReleaseFrame()
+                self._frame_acquired = False
                 error_msg = f"Failed to query texture interface: {ce}"
                 logger.warning(error_msg)
                 self.last_error = error_msg
@@ -177,38 +213,35 @@ class Duplicator:
                 
         except comtypes.COMError as ce:
             hresult = ce.args[0] if ce.args else None
-            self.last_error = f"COMError in update_frame: {ce} (HRESULT: {hresult:#010x if isinstance(hresult, int) else hresult})"
-            logger.warning(self.last_error)
-
+            
             if hresult == DXGI_ERROR_WAIT_TIMEOUT:
+                # Timeout is not an error - just means no new frame is available
+                # Return True to indicate no reinitialization is needed
                 logger.debug("Frame acquisition timed out.")
-                self.updated = False # No new frame
-                # Do not return here, finally block must execute
+                self.updated = False
+                return True
             elif hresult == DXGI_ERROR_ACCESS_LOST or hresult == ABANDONED_MUTEX_EXCEPTION:
-                # ABANDONED_MUTEX_EXCEPTION (0x000002E8) can also indicate a state requiring reinitialization.
-                # self.release() # Release current resources, might be part of reinit logic higher up
-                raise RapidShotReinitError(f"Access lost, re-initialization needed: {ce}", hresult=hresult) from ce
+                # Both ACCESS_LOST and ABANDONED_MUTEX_EXCEPTION require re-initialization.
+                # ABANDONED_MUTEX_EXCEPTION (0x000002E8) indicates the Desktop Duplication API
+                # mutex was abandoned, typically due to another process crashing or system issues.
+                self.last_error = f"Access lost, re-initialization needed: {ce}"
+                logger.warning(self.last_error)
+                return False
             elif hresult == DXGI_ERROR_DEVICE_REMOVED or hresult == DXGI_ERROR_DEVICE_RESET:
-                # self.release() # Release current resources
+                # Device errors should propagate
                 raise RapidShotDeviceError(f"Device error, re-initialization needed: {ce}", hresult=hresult) from ce
             else:
                 # Other COM errors
+                self.last_error = f"Unexpected DXGI error in update_frame: {ce} (HRESULT: {hresult:#010x if isinstance(hresult, int) else hresult})"
+                logger.warning(self.last_error)
                 raise RapidShotDXGIError(f"Unexpected DXGI error in update_frame: {ce}", hresult=hresult) from ce
         
         except Exception as e:
-            # Catch any other unexpected Python exceptions to ensure cleanup
+            # Catch any other unexpected Python exceptions
             self.last_error = f"Python exception in update_frame: {e}"
             logger.error(self.last_error)
-            self.updated = False # Ensure updated is False on other exceptions
-            raise RapidShotError(f"Unhandled Python exception in update_frame: {e}") from e # Wrap in RapidShotError
-        
-        finally:
-            # Release the intermediate IDXGIResource reference created by AcquireNextFrame
-            if frame_acquired and res:
-                try:
-                    res.Release()
-                except Exception as e:
-                    logger.warning(f"Failed to release resource: {e}")
+            self.updated = False
+            raise RapidShotError(f"Unhandled Python exception in update_frame: {e}") from e
 
     # Add this method to provide compatibility with capture.py
     def get_frame(self):
@@ -361,7 +394,7 @@ class Duplicator:
 
             if hresult == DXGI_ERROR_ACCESS_LOST:
                 # This specific error should propagate as it requires re-initialization.
-                # Caller (update_frame) will handle this by raising RapidShotReinitError.
+                # Caller (update_frame) will handle this by returning False.
                 # For now, let this COMError propagate up to update_frame's handler.
                 raise # Re-raise to be caught by update_frame's COMError handler
             elif hresult == DXGI_ERROR_NOT_FOUND:
