@@ -67,7 +67,7 @@ docs = ["sphinx>=4.5.0", "sphinx-rtd-theme>=1.0.0", "myst-parser>=0.18.0"]
 "Documentation" = "https://github.com/Zaatra/Rapidshot"
 
 [tool.setuptools]
-packages = ["rapidshot"]
+packages = { find = { include = ["rapidshot*"] } }
 
 [tool.black]
 line-length = 100
