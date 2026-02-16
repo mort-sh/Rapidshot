@@ -1,20 +1,13 @@
-RapidShot DirectX Diagnostic Results - 2026-02-15 21:47:18
+RapidShot DirectX Diagnostic Results - 2026-02-15 22:38:06
 
-Duration: 31.61s
-PASSED: 20
-WARNINGS: 4
-FAILED: 4
-
-FAILED TESTS:
-  - Failed importing rapidshot.core: cannot import name 'ID3D11Texture2D' from 'rapidshot._libs.dxgi' (C:\Users\m0rt\projects\RapidshotOG\rapidshot\_libs\dxgi.py)
-  - rapidshot.device_info() failed: DXGI device enumeration is not available on this platform.
-  - rapidshot.output_info() failed: DXGI device enumeration is not available on this platform.
-  - rapidshot.create() workflow failed: DXGI device enumeration is not available on this platform.
+Duration: 34.46s
+PASSED: 30
+WARNINGS: 3
+FAILED: 0
 
 WARNINGS:
   - Optional dependency missing: opencv-python
   - Optional dependency missing: pillow
-  - Optional dependency missing: cupy
   - WMI package not installed; falling back to dxdiag parsing.
 
 PASSED CHECKS:
@@ -22,6 +15,7 @@ PASSED CHECKS:
   - 64-bit Python detected.
   - numpy 2.4.2 installed
   - comtypes 1.4.15 installed
+  - cupy 13.6.0 installed
   - d3d11.dll is available
   - dxgi.dll is available
   - d3dcompiler_47.dll is available
@@ -35,6 +29,15 @@ PASSED CHECKS:
   - D3D11 device created successfully at feature level 11.1
   - Desktop duplication prerequisite (DXGI factory) is operational.
   - Imported rapidshot from C:\Users\m0rt\projects\RapidshotOG\rapidshot\__init__.py
-  - RapidShot version: 1.0.1.post1.dev31+gb40e3b69a.d20260216
+  - RapidShot version: 1.0.1.post1.dev32+g46af3f447.d20260216
   - Core rapidshot attributes are present.
+  - Imported rapidshot.core successfully.
+  - rapidshot.core exports expected symbols.
   - Imported rapidshot._libs.d3d11 and rapidshot._libs.dxgi
+  - rapidshot.device_info() returned data
+  - rapidshot.output_info() returned data
+  - rapidshot.create() returned a capture instance
+  - Initial frame captured: 3440x1440x3
+  - Delayed frame capture succeeded
+  - Capture resources released
+  - rapidshot.clean_up() completed

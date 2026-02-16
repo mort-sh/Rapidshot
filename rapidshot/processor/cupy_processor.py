@@ -11,6 +11,21 @@ from rapidshot.util.ctypes_helpers import pointer_to_address
 logger = logging.getLogger(__name__)
 
 
+def _version_tuple(value: str) -> tuple[int, ...]:
+    components = []
+    for token in value.split("."):
+        digits = []
+        for char in token:
+            if char.isdigit():
+                digits.append(char)
+            else:
+                break
+        if not digits:
+            break
+        components.append(int("".join(digits)))
+    return tuple(components)
+
+
 class CupyProcessor:
     """
     CUDA-accelerated processor using CuPy.
@@ -37,7 +52,7 @@ class CupyProcessor:
 
             # Check version compatibility
             version = cp.__version__
-            if version < self.MIN_CUPY_VERSION:
+            if _version_tuple(version) < _version_tuple(self.MIN_CUPY_VERSION):
                 warning_msg = (
                     f"Warning: Using CuPy version {version}. "
                     f"Version {self.MIN_CUPY_VERSION} or higher is recommended. "
@@ -65,7 +80,12 @@ class CupyProcessor:
         self.color_mode = color_mode
 
         # Try importing cuCV now to give early warning
-        if importlib.util.find_spec("cucv.cv2") is not None:
+        try:
+            has_cucv = importlib.util.find_spec("cucv") is not None
+        except ModuleNotFoundError:
+            has_cucv = False
+
+        if has_cucv:
             self._has_cucv = True
             logger.info("Using cuCV for color conversion (GPU accelerated)")
         else:

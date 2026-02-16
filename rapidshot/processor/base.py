@@ -2,6 +2,22 @@ import enum
 from typing import Any, Optional
 
 
+def _version_tuple(value: str) -> tuple[int, ...]:
+    """Extract numeric version components for stable comparisons."""
+    components = []
+    for token in value.split("."):
+        digits = []
+        for char in token:
+            if char.isdigit():
+                digits.append(char)
+            else:
+                break
+        if not digits:
+            break
+        components.append(int("".join(digits)))
+    return tuple(components)
+
+
 class ProcessorBackends(enum.Enum):
     """
     Enumeration of available processor backends.
@@ -66,7 +82,7 @@ class Processor:
             import numpy as np
 
             version = np.__version__
-            if version < "1.20.0":
+            if _version_tuple(version) < _version_tuple("1.20.0"):
                 print(
                     f"Warning: Using NumPy version {version}. Version 1.20.0 or higher is recommended."
                 )
@@ -76,7 +92,7 @@ class Processor:
         try:
             from PIL import __version__ as pil_version
 
-            if pil_version < "9.0.0":
+            if _version_tuple(pil_version) < _version_tuple("9.0.0"):
                 print(
                     f"Warning: Using PIL version {pil_version}. Version 9.0.0 or higher is recommended."
                 )
@@ -87,7 +103,7 @@ class Processor:
             import cv2
 
             version = cv2.__version__
-            if version < "4.5.0":
+            if _version_tuple(version) < _version_tuple("4.5.0"):
                 print(
                     f"Warning: Using OpenCV version {version}. Version 4.5.0 or higher is recommended."
                 )

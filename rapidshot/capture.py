@@ -24,6 +24,7 @@ from rapidshot.core.stagesurf import StageSurface
 from rapidshot.core.duplicator import Duplicator
 from rapidshot._libs.d3d11 import D3D11_BOX
 from rapidshot.processor import Processor
+from rapidshot.processor.base import ProcessorBackends
 import collections  # Added for deque
 from rapidshot.util.timer import (
     create_high_resolution_timer,
@@ -255,6 +256,18 @@ class ScreenCapture:
             self._processor = Processor(
                 output_color=output_color, nvidia_gpu=self.nvidia_gpu
             )
+
+            use_gpu_pipeline = (
+                self.nvidia_gpu
+                and self._processor.active_backend == ProcessorBackends.CUPY
+                and CUPY_AVAILABLE
+            )
+            if self.nvidia_gpu and not use_gpu_pipeline:
+                logger.warning(
+                    "GPU capture requested, but CuPy processor backend is unavailable. "
+                    "Falling back to CPU processing and NumPy memory pool."
+                )
+            self.nvidia_gpu = use_gpu_pipeline
 
             self._sourceRegion = D3D11_BOX(
                 left=0, top=0, right=self.width, bottom=self.height, front=0, back=1

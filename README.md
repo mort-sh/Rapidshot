@@ -22,6 +22,8 @@ A high-performance screencapture library for Windows using the Desktop Duplicati
 
 ### Profile Matrix
 
+> `uv pip install -e ".[gpu-cuda12,benchmarks,examples]"`
+
 | Profile      | Use case                                                         | Install command                     |
 | ------------ | ---------------------------------------------------------------- | ----------------------------------- |
 | `core`       | Core RapidShot runtime and diagnostic CLI                        | `uv pip install -e .`               |
