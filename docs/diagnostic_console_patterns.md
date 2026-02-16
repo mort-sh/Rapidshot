@@ -1,58 +1,50 @@
 # Diagnostic Console Patterns
 
 ## Context
-Task Orchestrator integration was attempted for this workstream, but the MCP transport returned `Transport closed`. This document mirrors the same design decisions so implementation guidance remains durable and auditable in-repo.
+This diagnostic UI standard prioritizes signal density and readability. The default experience is intentionally compact, with richer detail available through verbosity.
 
-## Styling Principles
-- Use a single rendering pipeline (`DiagnosticRenderer`) for all user-facing output.
-- Avoid bare `print()` calls; route output through Rich renderables and logger handlers.
-- Use semantic status styling:
-- `PASS` as green
-- `WARN` as yellow
-- `FAIL` as red
-- `INFO` as cyan
-- Use section rules and cards to keep scanability high during long diagnostic runs.
+## Core Principles
+- One output pipeline: all user-facing output is rendered by `DiagnosticRenderer`.
+- No duplicate console lines: file logging remains comprehensive, while console output stays signal-first.
+- Default output favors summaries over event floods.
+- Panels are sparse and intentional, not the default container for every message.
 
 ## Verbosity Contract
 - `-v/--verbose` uses `count=True`.
-- Verbosity mapping:
-- `0` -> `INFO`
-- `1` -> `DEBUG`
-- `2+` -> `TRACE`
-- At `DEBUG` and above, render richer details and per-section completion timing.
-- At `TRACE`, include exception tracebacks with local variables.
+- `0` (`INFO`): compact view.
+- `1` (`DEBUG`): includes pass-level events and richer detail blocks.
+- `2+` (`TRACE`): full details and tracebacks with locals.
 
-## Telemetry Cards and Sparkline Rules
-- Render telemetry in cards for:
-- pass count
-- warning count
-- failure count
-- execution telemetry
-- Use sparkline-style bars based on `▁▂▃▄▅▆▇█`.
-- Build bars from per-check durations (ms), normalized across min/max.
-- Always show total diagnostic duration and check count.
+## Default Compact Rules
+- Always show section headers.
+- Always show warnings and failures immediately.
+- Hide routine pass/info event lines by default.
+- Emit one section summary line:
+- `SectionName  pass=X warn=Y fail=Z  duration=...ms`
+- Keep key tables where they materially help interpretation.
 
-## File Write Highlighting Standard
-- Every artifact write must be visually spotlighted before and after write.
-- Required artifact types:
-- `rapidshot_diagnostics.log`
-- `rapidshot_diagnostics_results.txt`
-- Optional:
-- `rapidshot_diagnostics_results.json` when `--json-report` is enabled.
-- Spotlight cards include:
-- artifact type
-- full path
-- phase (`Writing`, `Saved`, `Finalized`)
-- byte size on completion
+## Panel Policy
+- Allowed high-value panel usage:
+- startup banner
+- exception/failure detail
+- final warnings/failures summary
+- Routine data and artifact updates should use compact lines/tables first.
 
-## Failure Rendering Standard
-- Failures must emit both:
-- a styled failure status line
-- a dedicated exception panel
-- At `TRACE` verbosity, render Rich traceback with local variables.
-- Summary must always include explicit lists of failed checks and warnings.
+## Telemetry and Summary
+- Telemetry is rendered as a compact strip:
+- pass/warn/fail counts
+- check count
+- total duration
+- sparkline of section durations
+- Warning/failure lists are capped in console output.
+- Overflow is represented as `+N more` to prevent wall-of-text output.
+
+## Artifact Visibility
+- Default mode prints one concise completion line per artifact.
+- Debug and above can show lifecycle detail (`Writing`, `Saved`, `Finalized`).
+- Artifact table remains available at the end for auditability.
 
 ## Reuse Guidance
-- Keep console rendering in a renderer class and file persistence in an artifact writer class.
-- Keep diagnostic probes focused on checks and event emission only.
-- Make helper functions (`resolve_verbosity_level`, `build_sparkline`) unit-testable for reuse across CLIs.
+- Keep rendering concerns in `DiagnosticRenderer`.
+- Keep file persistence concerns in `ArtifactWriter`.
+- Keep pure helpers (`resolve_verbosity_level`, `build_sparkline`) unit-testable and reusable.

@@ -366,6 +366,8 @@ RAPIDSHOT_VALIDATE_DIAGNOSTIC=1 bash scripts/validate.sh
 
 `diagnostic_script.py` now uses a Typer + Rich CLI with styled telemetry output.
 
+Default output is compact and signal-first. Use `-v` for richer detail and `-vv`/`-vvv` for deep diagnostics and traceback-heavy output.
+
 Show usage/help:
 
 ```bash

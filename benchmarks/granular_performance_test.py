@@ -229,9 +229,7 @@ def main():
         # This means we're calculating FPS based on frames that *could* be processed.
 
         # For a simple FPS, we can use the averages over the number of *processed* frames
-        total_avg_time_per_processed_frame = (
-            avg_capture_time + avg_process_time
-        )  # This is a bit of a simplification
+        # Total avg time per processed frame is avg capture + avg process (simplified).
         # if capture_times includes frames not processed.
         # A more precise sum would be needed.
 

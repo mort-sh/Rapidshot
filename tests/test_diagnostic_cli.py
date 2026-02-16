@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import ast
+import io
+import logging
 import subprocess
 import sys
 from pathlib import Path
 
 import diagnostic_script as ds
+from rich.console import Console
 
 
 def test_resolve_verbosity_level() -> None:
@@ -33,6 +36,50 @@ def test_status_theme_covers_all_statuses() -> None:
     }
 
 
+def test_renderer_hides_pass_and_info_at_default_verbosity() -> None:
+    output = io.StringIO()
+    renderer = ds.DiagnosticRenderer(
+        console=Console(file=output, force_terminal=False),
+        verbosity=ds.VerbosityLevel.INFO,
+    )
+    renderer.render_event(
+        ds.CheckEvent(section="x", status=ds.CheckStatus.PASS, message="pass event")
+    )
+    renderer.render_event(
+        ds.CheckEvent(section="x", status=ds.CheckStatus.INFO, message="info event")
+    )
+    assert output.getvalue().strip() == ""
+
+
+def test_renderer_shows_pass_at_debug_verbosity() -> None:
+    output = io.StringIO()
+    renderer = ds.DiagnosticRenderer(
+        console=Console(file=output, force_terminal=False),
+        verbosity=ds.VerbosityLevel.DEBUG,
+    )
+    renderer.render_event(
+        ds.CheckEvent(section="x", status=ds.CheckStatus.PASS, message="pass event")
+    )
+    rendered = output.getvalue()
+    assert "PASS" in rendered
+    assert "pass event" in rendered
+
+
+def test_issue_summary_caps_long_lists() -> None:
+    output = io.StringIO()
+    renderer = ds.DiagnosticRenderer(
+        console=Console(file=output, force_terminal=False),
+        verbosity=ds.VerbosityLevel.INFO,
+    )
+    events = [
+        ds.CheckEvent(section="x", status=ds.CheckStatus.WARN, message=f"warn {idx}")
+        for idx in range(ds.MAX_ISSUES_IN_SUMMARY + 2)
+    ]
+    renderer.render_issue_lists(events)
+    rendered = output.getvalue()
+    assert "+2 more" in rendered
+
+
 def test_artifact_writer_writes_expected_files(tmp_path: Path) -> None:
     ctx = ds.create_run_context(ds.VerbosityLevel.INFO, tmp_path, json_report=True)
     try:
@@ -57,6 +104,15 @@ def test_artifact_writer_writes_expected_files(tmp_path: Path) -> None:
     assert (tmp_path / ds.DEFAULT_RESULTS_FILE).exists()
     assert (tmp_path / ds.DEFAULT_JSON_FILE).exists()
     assert (tmp_path / ds.DEFAULT_LOG_FILE).exists()
+
+
+def test_logger_is_file_only_for_compact_console(tmp_path: Path) -> None:
+    logger = ds._create_logger(tmp_path / ds.DEFAULT_LOG_FILE, ds.VerbosityLevel.INFO)
+    try:
+        assert len(logger.handlers) == 1
+        assert isinstance(logger.handlers[0], logging.FileHandler)
+    finally:
+        ds.teardown_logging(logger)
 
 
 def test_cli_help_renders() -> None:

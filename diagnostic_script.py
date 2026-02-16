@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ctypes
+import io
 import json
 import logging
 import os
@@ -12,6 +13,7 @@ import struct
 import subprocess
 import tempfile
 import time
+from contextlib import redirect_stderr, redirect_stdout
 from ctypes import wintypes
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -22,11 +24,8 @@ from typing import Any, Callable, Sequence
 import comtypes
 import typer
 import typer.rich_utils as typer_rich_utils
-from rich import box
-from rich.columns import Columns
 from rich.console import Console
 from rich.highlighter import NullHighlighter
-from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.table import Table
 from rich.traceback import Traceback
@@ -37,6 +36,7 @@ SPARK_CHARS = "▁▂▃▄▅▆▇█"
 DEFAULT_LOG_FILE = "rapidshot_diagnostics.log"
 DEFAULT_RESULTS_FILE = "rapidshot_diagnostics_results.txt"
 DEFAULT_JSON_FILE = "rapidshot_diagnostics_results.json"
+MAX_ISSUES_IN_SUMMARY = 5
 
 
 def _configure_typer_help_theme() -> None:
@@ -222,7 +222,29 @@ class DiagnosticRenderer:
     def render_section(self, title: str) -> None:
         self.console.rule(f"[bold blue]{title}[/]")
 
+    def _sanitize_for_console(self, text: str) -> str:
+        encoding = getattr(self.console.file, "encoding", None)
+        if not encoding:
+            return text
+        try:
+            text.encode(encoding)
+            return text
+        except UnicodeEncodeError:
+            return "-" * len(text)
+
+    def _should_render_event(self, event: CheckEvent) -> bool:
+        if event.status in (CheckStatus.WARN, CheckStatus.FAIL):
+            return True
+        if self.verbosity >= VerbosityLevel.TRACE:
+            return True
+        if self.verbosity >= VerbosityLevel.DEBUG and event.status == CheckStatus.PASS:
+            return True
+        return False
+
     def render_event(self, event: CheckEvent) -> None:
+        if not self._should_render_event(event):
+            return
+
         label, style, icon = STATUS_THEME[event.status]
         duration_suffix = ""
         if event.duration_ms is not None:
@@ -231,7 +253,11 @@ class DiagnosticRenderer:
             f"[bold {style}]{icon} {label:<4}[/] {event.message}{duration_suffix}"
         )
 
-        if event.details and self.verbosity >= VerbosityLevel.DEBUG:
+        show_details = self.verbosity >= VerbosityLevel.TRACE or (
+            self.verbosity >= VerbosityLevel.DEBUG
+            and event.status in (CheckStatus.WARN, CheckStatus.FAIL)
+        )
+        if event.details and show_details:
             border = "bright_blue" if event.status == CheckStatus.INFO else style
             self.console.print(
                 Panel(
@@ -245,7 +271,7 @@ class DiagnosticRenderer:
     def render_kv_table(self, title: str, rows: Sequence[tuple[str, str]]) -> None:
         table = Table(
             title=title,
-            box=box.SIMPLE_HEAVY,
+            box=None,
             header_style="bold cyan",
             show_lines=False,
         )
@@ -256,9 +282,14 @@ class DiagnosticRenderer:
         self.console.print(table)
 
     def render_block(self, title: str, content: str, style: str = "cyan") -> None:
-        self.console.print(
-            Panel(content, title=title, border_style=style, padding=(0, 1))
-        )
+        if self.verbosity >= VerbosityLevel.DEBUG:
+            self.console.print(
+                Panel(content, title=title, border_style=style, padding=(0, 1))
+            )
+            return
+
+        self.console.print(f"[bold {style}]{title}[/]")
+        self.console.print(content)
 
     def render_exception(self, title: str, error: BaseException) -> None:
         self.console.print(
@@ -274,6 +305,22 @@ class DiagnosticRenderer:
                     type(error), error, error.__traceback__, show_locals=True
                 )
             )
+
+    def render_section_summary(
+        self,
+        section: str,
+        pass_count: int,
+        warn_count: int,
+        fail_count: int,
+        duration_ms: float,
+    ) -> None:
+        self.console.print(
+            f"[bold white]{section}[/]  "
+            f"[green]pass={pass_count}[/]  "
+            f"[yellow]warn={warn_count}[/]  "
+            f"[red]fail={fail_count}[/]  "
+            f"[dim]{duration_ms:.1f} ms[/]"
+        )
 
     def render_telemetry_cards(
         self,
@@ -291,43 +338,22 @@ class DiagnosticRenderer:
             duration_text = (
                 f"min {min(check_samples):.1f} ms | max {max(check_samples):.1f} ms"
             )
+        safe_spark = self._sanitize_for_console(spark)
 
-        cards = [
-            Panel(
-                f"[bold green]{pass_count}[/]\n[dim]Passing signals[/]",
-                title="Pass",
-                border_style="green",
-                padding=(1, 2),
-            ),
-            Panel(
-                f"[bold yellow]{warn_count}[/]\n[dim]Warnings[/]",
-                title="Warn",
-                border_style="yellow",
-                padding=(1, 2),
-            ),
-            Panel(
-                f"[bold red]{fail_count}[/]\n[dim]Failures[/]",
-                title="Fail",
-                border_style="red",
-                padding=(1, 2),
-            ),
-            Panel(
-                f"[bold cyan]{len(durations)}[/] checks\n"
-                f"[bold white]{spark}[/]\n"
-                f"[dim]{duration_text}[/]\n"
-                f"[dim]Total {total_seconds:.2f}s[/]",
-                title="Telemetry",
-                border_style="cyan",
-                padding=(1, 2),
-            ),
-        ]
-        self.console.print(Columns(cards, expand=True, equal=True))
+        self.console.print(
+            "[bold cyan]Telemetry[/]  "
+            f"[green]pass={pass_count}[/]  "
+            f"[yellow]warn={warn_count}[/]  "
+            f"[red]fail={fail_count}[/]  "
+            f"[white]checks={len(durations)}[/]  "
+            f"[white]total={total_seconds:.2f}s[/]"
+        )
+        self.console.print(f"[dim]{safe_spark}[/] [dim]{duration_text}[/]")
 
     def render_summary_table(self, events: Sequence[CheckEvent]) -> None:
         table = Table(
-            title="Diagnostic Summary",
-            box=box.MINIMAL_DOUBLE_HEAD,
-            header_style="bold magenta",
+            box=None,
+            header_style="bold white",
         )
         table.add_column("Status", style="bold")
         table.add_column("Count", justify="right")
@@ -347,20 +373,34 @@ class DiagnosticRenderer:
             event.message for event in events if event.status == CheckStatus.WARN
         ]
 
+        def _capped_lines(items: list[str]) -> str:
+            shown = items[:MAX_ISSUES_IN_SUMMARY]
+            lines = [f"- {line}" for line in shown]
+            remaining = len(items) - len(shown)
+            if remaining > 0:
+                lines.append(f"- +{remaining} more")
+            return "\n".join(lines)
+
         if failures:
-            self.render_block(
-                "Failed Checks",
-                "\n".join(f"- {line}" for line in failures),
-                style="red",
+            self.console.print(
+                Panel(
+                    _capped_lines(failures),
+                    title="Failed Checks",
+                    border_style="red",
+                    padding=(0, 1),
+                )
             )
         if warnings:
-            self.render_block(
-                "Warnings", "\n".join(f"- {line}" for line in warnings), style="yellow"
+            self.console.print(
+                Panel(
+                    _capped_lines(warnings),
+                    title="Warnings",
+                    border_style="yellow",
+                    padding=(0, 1),
+                )
             )
         if not failures:
-            self.render_block(
-                "Outcome", "[bold green]All critical checks passed.[/]", style="green"
-            )
+            self.console.print("[bold green]Outcome:[/] All critical checks passed.")
 
     def render_file_spotlight(
         self,
@@ -369,23 +409,28 @@ class DiagnosticRenderer:
         phase: str,
         bytes_written: int | None = None,
     ) -> None:
-        parts = [
-            f"[bold cyan]{phase}[/]",
-            f"[bold white][link=file://{path}]{path}[/link][/bold white]",
-        ]
+        label = f"{artifact_type} {phase.lower()}"
         if bytes_written is not None:
-            parts.append(f"[dim]{_format_bytes(bytes_written)}[/]")
-        body = "\n".join(parts)
-        self.console.print(
-            Panel.fit(
-                body, title=f"{artifact_type} artifact", border_style="bright_cyan"
+            label = f"{label} ({_format_bytes(bytes_written)})"
+
+        if self.verbosity >= VerbosityLevel.DEBUG:
+            body = (
+                f"[bold cyan]{phase}[/]\n"
+                f"[bold white][link=file://{path}]{path}[/link][/bold white]"
             )
-        )
+            if bytes_written is not None:
+                body += f"\n[dim]{_format_bytes(bytes_written)}[/]"
+            self.console.print(
+                Panel.fit(
+                    body, title=f"{artifact_type} artifact", border_style="bright_cyan"
+                )
+            )
+            return
+
+        self.console.print(f"[dim]artifact[/] {label}: [cyan]{path}[/]")
 
     def render_artifacts(self, artifacts: Sequence[ArtifactRecord]) -> None:
-        table = Table(
-            title="Written Artifacts", box=box.SIMPLE_HEAVY, header_style="bold cyan"
-        )
+        table = Table(box=None, header_style="bold cyan")
         table.add_column("Type", style="bold white")
         table.add_column("Path", style="cyan")
         table.add_column("Size", justify="right", style="green")
@@ -417,7 +462,8 @@ class ArtifactWriter:
 
     def write_text_report(self, total_seconds: float) -> Path:
         path = self.ctx.output_dir / DEFAULT_RESULTS_FILE
-        self.ctx.renderer.render_file_spotlight("Text summary", path, "Writing")
+        if self.ctx.verbosity >= VerbosityLevel.DEBUG:
+            self.ctx.renderer.render_file_spotlight("Text summary", path, "Writing")
 
         pass_events = [
             event.message
@@ -469,7 +515,8 @@ class ArtifactWriter:
 
     def write_json_report(self, total_seconds: float) -> Path:
         path = self.ctx.output_dir / DEFAULT_JSON_FILE
-        self.ctx.renderer.render_file_spotlight("JSON report", path, "Writing")
+        if self.ctx.verbosity >= VerbosityLevel.DEBUG:
+            self.ctx.renderer.render_file_spotlight("JSON report", path, "Writing")
 
         payload = {
             "generated_at": datetime.utcnow().isoformat() + "Z",
@@ -580,7 +627,7 @@ class DiagnosticRunner:
         for section_name, check in checks:
             self.current_section = section_name
             self.ctx.renderer.render_section(section_name)
-            self.ctx.logger.info("Starting check: %s", section_name)
+            section_event_start = len(self.ctx.events)
 
             section_start = time.perf_counter()
             with self.ctx.console.status(
@@ -592,11 +639,23 @@ class DiagnosticRunner:
                     self._capture_exception(f"Unhandled error in {section_name}", error)
             duration_ms = (time.perf_counter() - section_start) * 1000.0
             self.ctx.durations.append((section_name, duration_ms))
-
-            if self.ctx.verbosity >= VerbosityLevel.DEBUG:
-                self._emit(
-                    CheckStatus.INFO, "Section completed", duration_ms=duration_ms
-                )
+            section_events = self.ctx.events[section_event_start:]
+            pass_count = sum(
+                1 for event in section_events if event.status == CheckStatus.PASS
+            )
+            warn_count = sum(
+                1 for event in section_events if event.status == CheckStatus.WARN
+            )
+            fail_count = sum(
+                1 for event in section_events if event.status == CheckStatus.FAIL
+            )
+            self.ctx.renderer.render_section_summary(
+                section_name,
+                pass_count=pass_count,
+                warn_count=warn_count,
+                fail_count=fail_count,
+                duration_ms=duration_ms,
+            )
 
         total_seconds = time.perf_counter() - started
 
@@ -1011,9 +1070,7 @@ class DiagnosticRunner:
             release_com_ptr(factory)
 
         if adapter_rows:
-            table = Table(
-                title="DXGI adapters", box=box.SIMPLE_HEAVY, header_style="bold cyan"
-            )
+            table = Table(title="DXGI adapters", box=None, header_style="bold cyan")
             table.add_column("Index", justify="right")
             table.add_column("Description")
             table.add_column("VRAM")
@@ -1267,7 +1324,8 @@ class DiagnosticRunner:
             rendered = str(device_info).strip()
             if rendered:
                 self._emit(CheckStatus.PASS, "rapidshot.device_info() returned data")
-                self.ctx.renderer.render_block("Device info", rendered, style="cyan")
+                if self.ctx.verbosity >= VerbosityLevel.DEBUG:
+                    self.ctx.renderer.render_block("Device info", rendered, style="cyan")
             else:
                 self._emit(
                     CheckStatus.WARN, "rapidshot.device_info() returned empty data"
@@ -1285,7 +1343,8 @@ class DiagnosticRunner:
             rendered = str(output_info).strip()
             if rendered:
                 self._emit(CheckStatus.PASS, "rapidshot.output_info() returned data")
-                self.ctx.renderer.render_block("Output info", rendered, style="blue")
+                if self.ctx.verbosity >= VerbosityLevel.DEBUG:
+                    self.ctx.renderer.render_block("Output info", rendered, style="blue")
             else:
                 self._emit(
                     CheckStatus.WARN, "rapidshot.output_info() returned empty data"
@@ -1299,7 +1358,18 @@ class DiagnosticRunner:
         try:
             import rapidshot
 
-            screen = rapidshot.create(output_color="BGR")
+            create_output = io.StringIO()
+            with redirect_stdout(create_output), redirect_stderr(create_output):
+                screen = rapidshot.create(output_color="BGR")
+
+            captured_lines = [
+                line.strip()
+                for line in create_output.getvalue().splitlines()
+                if line.strip()
+            ]
+            for line in captured_lines:
+                self._emit(CheckStatus.WARN, line)
+
             if screen is None:
                 self._emit(CheckStatus.FAIL, "rapidshot.create() returned None")
                 return False
@@ -1360,9 +1430,7 @@ class DiagnosticRunner:
             return False
 
 
-def _create_logger(
-    console: Console, log_path: Path, verbosity: VerbosityLevel
-) -> logging.Logger:
+def _create_logger(log_path: Path, verbosity: VerbosityLevel) -> logging.Logger:
     _install_trace_level()
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1378,25 +1446,12 @@ def _create_logger(
     logger.propagate = False
     logger.setLevel(logger_level)
 
-    rich_handler = RichHandler(
-        console=console,
-        show_time=True,
-        show_level=True,
-        show_path=False,
-        markup=True,
-        rich_tracebacks=True,
-        tracebacks_show_locals=verbosity >= VerbosityLevel.TRACE,
-    )
-    rich_handler.setFormatter(logging.Formatter("%(message)s"))
-    rich_handler.setLevel(logger_level)
-
     file_handler = logging.FileHandler(log_path, mode="w", encoding="utf-8")
     file_handler.setFormatter(
         logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
     )
     file_handler.setLevel(TRACE_LEVEL_NUM)
 
-    logger.addHandler(rich_handler)
     logger.addHandler(file_handler)
     return logger
 
@@ -1418,7 +1473,7 @@ def create_run_context(
 
     console = Console(markup=True)
     log_path = output_path / DEFAULT_LOG_FILE
-    logger = _create_logger(console, log_path, verbosity)
+    logger = _create_logger(log_path, verbosity)
 
     ctx = RunContext(
         console=console,
@@ -1429,7 +1484,8 @@ def create_run_context(
         log_path=log_path,
     )
     ctx.renderer = DiagnosticRenderer(console, verbosity)
-    ctx.renderer.render_file_spotlight("Log", log_path, "Opened")
+    if verbosity >= VerbosityLevel.DEBUG:
+        ctx.renderer.render_file_spotlight("Log", log_path, "Opened")
     return ctx
 
 
