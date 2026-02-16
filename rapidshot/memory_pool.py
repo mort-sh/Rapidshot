@@ -1,4 +1,5 @@
 import collections
+import importlib.util
 import threading
 import numpy as np
 
@@ -254,9 +255,7 @@ class CupyMemoryPool(BaseMemoryPool):
     def __init__(self, buffer_shape, dtype, num_buffers):
         super().__init__(buffer_shape, dtype, num_buffers)
         # Ensure CuPy is available before trying to initialize the pool with it
-        try:
-            import cupy  # Check if cupy can be imported
-        except ImportError:
+        if importlib.util.find_spec("cupy") is None:
             raise ImportError("CupyMemoryPool requires CuPy to be installed.")
 
         self.initialize_pool()  # Automatically initialize upon creation

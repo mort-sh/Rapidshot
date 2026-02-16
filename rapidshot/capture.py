@@ -1155,28 +1155,28 @@ class ScreenCapture:
             raise ValueError("Capture dimensions are not initialized")
 
         try:
-            l, t, r, b = map(int, region)
+            left, top, right, bottom = map(int, region)
         except (TypeError, ValueError) as conversion_error:
             raise ValueError(
                 f"Region must be a tuple of four integers: {conversion_error}"
             ) from conversion_error
 
-        if l < 0 or t < 0:
+        if left < 0 or top < 0:
             raise ValueError(
-                f"Region start ({l}, {t}) is outside the capture bounds (0, 0)"
+                f"Region start ({left}, {top}) is outside the capture bounds (0, 0)"
             )
 
-        if r > self.width or b > self.height:
+        if right > self.width or bottom > self.height:
             raise ValueError(
-                f"Region end ({r}, {b}) exceeds capture bounds ({self.width}, {self.height})"
+                f"Region end ({right}, {bottom}) exceeds capture bounds ({self.width}, {self.height})"
             )
 
-        if l >= r or t >= b:
+        if left >= right or top >= bottom:
             raise ValueError(
                 f"Region coordinates must form a positive area, got {region}"
             )
 
-        return (l, t, r, b)
+        return (left, top, right, bottom)
 
     def _validate_region(self, region: Tuple[int, int, int, int]):
         """
@@ -1189,16 +1189,16 @@ class ScreenCapture:
             ValueError: If region is invalid
         """
         validated_region = self._normalize_region(region)
-        l, t, r, b = validated_region
+        left, top, right, bottom = validated_region
         self.region = validated_region
 
         if hasattr(self, "_sourceRegion") and self._sourceRegion is not None:
-            self._sourceRegion.left = l
-            self._sourceRegion.top = t
-            self._sourceRegion.right = r
-            self._sourceRegion.bottom = b
+            self._sourceRegion.left = left
+            self._sourceRegion.top = top
+            self._sourceRegion.right = right
+            self._sourceRegion.bottom = bottom
 
-        self.shot_w, self.shot_h = r - l, b - t
+        self.shot_w, self.shot_h = right - left, bottom - top
 
     def release(self):
         """

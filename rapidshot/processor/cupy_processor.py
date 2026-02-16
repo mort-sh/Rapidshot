@@ -3,6 +3,7 @@ import platform
 import logging  # Added missing import
 import warnings
 import sys
+import importlib.util
 from rapidshot.processor.base import ProcessorBackends
 from rapidshot.util.ctypes_helpers import pointer_to_address
 
@@ -64,12 +65,10 @@ class CupyProcessor:
         self.color_mode = color_mode
 
         # Try importing cuCV now to give early warning
-        try:
-            import cucv.cv2
-
+        if importlib.util.find_spec("cucv.cv2") is not None:
             self._has_cucv = True
             logger.info("Using cuCV for color conversion (GPU accelerated)")
-        except ImportError:
+        else:
             self._has_cucv = False
             logger.info(
                 "cuCV not found, falling back to regular OpenCV for color conversion"

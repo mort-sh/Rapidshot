@@ -2,8 +2,9 @@ import weakref
 import time
 from rapidshot.util.logging import get_logger
 import platform
+import importlib.util
 import sys
-from typing import Optional, Tuple, Dict, Any
+from typing import Dict, Any
 from importlib.metadata import PackageNotFoundError, version
 
 # Screen capture relies on Windows-specific COM technology. Attempt to import it lazily so
@@ -36,7 +37,6 @@ try:
 except ImportError as exc:
     enum_dxgi_adapters = get_output_metadata = None
     _io_import_error = exc
-from rapidshot.util.logging import setup_logging
 
 # Initialize logging
 logger = get_logger("init")
@@ -239,11 +239,9 @@ class RapidshotFactory(metaclass=Singleton):
             output.update_desc()
 
             if nvidia_gpu:
-                try:
-                    import cupy
-
+                if importlib.util.find_spec("cupy") is not None:
                     logger.info("Using NVIDIA GPU acceleration with CuPy")
-                except ImportError:
+                else:
                     nvidia_gpu = False
                     logger.warning(
                         "NVIDIA GPU acceleration requested but CuPy not available. Falling back to CPU mode."

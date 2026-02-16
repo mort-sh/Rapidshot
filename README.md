@@ -17,23 +17,72 @@ A high-performance screencapture library for Windows using the Desktop Duplicati
 ## Installation
 
 > **Note:** The package is installed as `rapidshot` and imported as `import rapidshot`.
+>
+> **Important:** `uv pip install rapidshot[...]` installs from PyPI. Some published versions may not expose every extra listed in this repository. For this repo checkout, use editable local installs (`-e ".[extra]"`).
 
 ### Profile Matrix
 
-| Profile      | Use case | Install command |
-|--------------|----------|-----------------|
-| `core`       | Core RapidShot runtime and diagnostic CLI | `pip install rapidshot` |
-| `cv2`        | OpenCV-based workflows | `pip install "rapidshot[cv2]"` |
-| `pil`        | PIL/Pillow image workflows | `pip install "rapidshot[pil]"` |
-| `examples`   | Run bundled examples (`av`, `pynput`, `opencv-python`, `pillow`) | `pip install "rapidshot[examples]"` |
-| `benchmarks` | Run benchmarks against other capture libraries | `pip install "rapidshot[benchmarks]"` |
-| `gpu-cuda11` | GPU acceleration with CuPy (CUDA 11 runtime) | `pip install "rapidshot[gpu-cuda11]"` |
-| `gpu-cuda12` | GPU acceleration with CuPy (CUDA 12 runtime) | `pip install "rapidshot[gpu-cuda12]"` |
+| Profile      | Use case                                                         | Install command                     |
+| ------------ | ---------------------------------------------------------------- | ----------------------------------- |
+| `core`       | Core RapidShot runtime and diagnostic CLI                        | `uv pip install -e .`               |
+| `cv2`        | OpenCV-based workflows                                           | `uv pip install -e ".[cv2]"`        |
+| `pil`        | PIL/Pillow image workflows                                       | `uv pip install -e ".[pil]"`        |
+| `examples`   | Run bundled examples (`av`, `pynput`, `opencv-python`, `pillow`) | `uv pip install -e ".[examples]"`   |
+| `benchmarks` | Run benchmarks against other capture libraries                   | `uv pip install -e ".[benchmarks]"` |
+| `gpu-cuda11` | GPU acceleration with CuPy (CUDA 11 runtime)                     | `uv pip install -e ".[gpu-cuda11]"` |
+| `gpu-cuda12` | GPU acceleration with CuPy (CUDA 12 runtime)                     | `uv pip install -e ".[gpu-cuda12]"` |
 
 ### Compatibility Aliases
 
 - `rapidshot[gpu]` is kept as an alias of `rapidshot[gpu-cuda11]`
 - `rapidshot[gpu_cuda12]` is kept as an alias of `rapidshot[gpu-cuda12]`
+
+### Combining Extras
+
+Install multiple profiles by comma-separating extras:
+
+```bash
+uv pip install -e ".[gpu-cuda12,benchmarks]"
+```
+
+## Local Development Setup
+
+> **Windows-only:** RapidShot relies on DXGI and requires Windows 10+ with Python 3.8-3.11.
+
+### 1) Create and activate a uv virtual environment
+
+```powershell
+uv venv
+.\.venv\Scripts\Activate.ps1
+```
+
+### 2) Install the project in editable mode
+
+```bash
+uv pip install -e ".[dev]"
+```
+
+### 3) Validate and run diagnostics
+
+```bash
+# Lightweight validation
+uv run bash scripts/validate.sh
+
+# Full diagnostics (DXGI checks)
+RAPIDSHOT_VALIDATE_DIAGNOSTIC=1 uv run bash scripts/validate.sh
+```
+
+You can also run the diagnostics directly with Python:
+
+```bash
+uv run python diagnostic_script.py run
+```
+
+### 4) Run tests
+
+```bash
+uv run pytest
+```
 
 ## Quick Start
 
@@ -131,7 +180,7 @@ if cursor.PointerPositionInfo.Visible:
     # Get cursor position
     x, y = cursor.PointerPositionInfo.Position.x, cursor.PointerPositionInfo.Position.y
     print(f"Cursor position: ({x}, {y})")
-    
+
     # Cursor shape information is also available
     if cursor.Shape is not None:
         width = cursor.PointerShapeInfo.Width
@@ -153,12 +202,12 @@ def overlay_cursor(frame, cursor):
     """Overlay cursor on captured frame."""
     if not cursor.PointerPositionInfo.Visible or cursor.Shape is None:
         return frame
-    
+
     # Create an overlay from cursor shape data
     shape_type = cursor.PointerShapeInfo.Type
     width = cursor.PointerShapeInfo.Width
     height = cursor.PointerShapeInfo.Height
-    
+
     # Different processing based on cursor type (monochrome, color, or masked)
     if shape_type & DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME:
         # Process monochrome cursor
@@ -169,16 +218,16 @@ def overlay_cursor(frame, cursor):
     elif shape_type & DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MASKED_COLOR:
         # Process masked color cursor
         # ...
-    
+
     # Position the cursor on the frame at its current coordinates
     x, y = cursor.PointerPositionInfo.Position.x, cursor.PointerPositionInfo.Position.y
-    
+
     # Ensure cursor is within frame boundaries
     # ...
-    
+
     # Blend cursor with frame
     # ...
-    
+
     return frame_with_cursor
 
 # Usage example
@@ -306,12 +355,12 @@ python benchmarks/rapidshot_max_fps.py --color BGRA
 
 The table below shows typical performance results across different libraries:
 
-| Library         | Average FPS | GPU-accelerated FPS |
-|-----------------|-------------|---------------------|
-| RapidShot       | 240+        | 300+                |
-| Original DXCam  | 210         | N/A                 |
-| Python-MSS      | 75          | N/A                 |
-| D3DShot         | 118         | N/A                 |
+| Library        | Average FPS | GPU-accelerated FPS |
+| -------------- | ----------- | ------------------- |
+| RapidShot      | 240+        | 300+                |
+| Original DXCam | 210         | N/A                 |
+| Python-MSS     | 75          | N/A                 |
+| D3DShot        | 118         | N/A                 |
 
 ## System Requirements
 
@@ -331,21 +380,25 @@ The table below shows typical performance results across different libraries:
 RapidShot recently resolved a difficult DirectX initialization failure where DXGI factory and adapter calls could appear to work, but later calls (such as output/device operations) crashed with access violations.
 
 What was observed:
+
 - `CreateDXGIFactory2` and adapter enumeration could pass.
 - Later calls like `IDXGIOutput::GetDesc` or `rapidshot.create()` failed intermittently.
 - `comtypes` emitted destructor-time exceptions (`Exception ignored in _compointer_base.__del__`).
 
 Root cause:
+
 - COM interface pointers were being manually `Release()`d in multiple paths while also being owned by `comtypes`, which auto-releases during finalization.
 - That caused double-release and stale pointer corruption.
 
 Fixes applied:
+
 - Standardized safe COM release behavior in runtime cleanup paths.
 - Removed manual release patterns that conflicted with `comtypes` ownership.
 - Updated diagnostic cleanup logic so tests no longer self-corrupt COM pointer state.
 - Re-verified with `diagnostic_script.py` end-to-end.
 
 Outcome:
+
 - DXGI factory creation, D3D11 device creation, `rapidshot.create()`, and frame grabs now complete reliably in diagnostics.
 
 ## Development Validation
@@ -397,7 +450,6 @@ uv run python diagnostic_script.py --output-dir .test --json-report
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request
-
 
 ## License
 

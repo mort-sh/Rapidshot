@@ -1,8 +1,9 @@
 import ctypes
+import ctypes.wintypes as wintypes
 from typing import Tuple
 from dataclasses import dataclass
-from rapidshot._libs.d3d11 import *
-from rapidshot._libs.dxgi import *
+
+from rapidshot._libs.dxgi import DXGI_OUTPUT_DESC, IDXGIOutput1
 
 
 @dataclass

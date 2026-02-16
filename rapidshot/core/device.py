@@ -3,9 +3,33 @@ import logging
 import sys
 from dataclasses import dataclass
 from typing import List
+
 import comtypes
-from rapidshot._libs.d3d11 import *
-from rapidshot._libs.dxgi import *
+from rapidshot._libs.d3d11 import (
+    D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+    D3D11_CREATE_DEVICE_DEBUG,
+    D3D11_SDK_VERSION,
+    D3D_DRIVER_TYPE_HARDWARE,
+    D3D_DRIVER_TYPE_REFERENCE,
+    D3D_DRIVER_TYPE_SOFTWARE,
+    D3D_DRIVER_TYPE_UNKNOWN,
+    D3D_DRIVER_TYPE_WARP,
+    D3D_FEATURE_LEVEL_9_1,
+    D3D_FEATURE_LEVEL_9_2,
+    D3D_FEATURE_LEVEL_9_3,
+    D3D_FEATURE_LEVEL_10_0,
+    D3D_FEATURE_LEVEL_10_1,
+    D3D_FEATURE_LEVEL_11_0,
+    D3D_FEATURE_LEVEL_11_1,
+    ID3D11Device,
+    ID3D11DeviceContext,
+)
+from rapidshot._libs.dxgi import (
+    DXGI_ADAPTER_DESC1,
+    DXGI_ERROR_NOT_FOUND,
+    IDXGIAdapter1,
+    IDXGIOutput1,
+)
 from rapidshot.util.ctypes_helpers import release_com_ptr
 
 # Configure logging

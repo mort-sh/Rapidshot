@@ -1,8 +1,15 @@
 import ctypes
 from dataclasses import dataclass, InitVar
 from typing import Tuple, Optional
-from rapidshot._libs.d3d11 import *
-from rapidshot._libs.dxgi import *
+
+from rapidshot._libs.d3d11 import (
+    D3D11_CPU_ACCESS_READ,
+    D3D11_TEXTURE2D_DESC,
+    D3D11_USAGE_STAGING,
+    DXGI_FORMAT_B8G8R8A8_UNORM,
+    ID3D11Texture2D,
+)
+from rapidshot._libs.dxgi import DXGI_MAPPED_RECT, IDXGISurface
 from rapidshot.core.device import Device
 from rapidshot.core.output import Output
 from rapidshot.util.ctypes_helpers import release_com_ptr

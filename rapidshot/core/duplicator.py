@@ -2,7 +2,10 @@ import ctypes
 import logging
 from dataclasses import dataclass, field, InitVar
 from typing import Tuple, Union
-from rapidshot._libs.d3d11 import *
+
+import comtypes
+
+from rapidshot._libs.d3d11 import ID3D11Texture2D
 from rapidshot._libs.dxgi import (
     DXGI_ERROR_ACCESS_LOST,
     DXGI_ERROR_WAIT_TIMEOUT,
@@ -17,7 +20,6 @@ from rapidshot._libs.dxgi import (
     DXGI_OUTDUPL_POINTER_SHAPE_INFO,
     DXGI_OUTDUPL_FRAME_INFO,
     IDXGIResource,
-    ID3D11Texture2D,
 )
 from rapidshot.core.device import Device
 from rapidshot.core.output import Output

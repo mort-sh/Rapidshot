@@ -74,7 +74,7 @@ class Processor:
             pass
 
         try:
-            from PIL import Image, __version__ as pil_version
+            from PIL import __version__ as pil_version
 
             if pil_version < "9.0.0":
                 print(
