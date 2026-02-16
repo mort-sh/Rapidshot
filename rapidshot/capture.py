@@ -1,11 +1,10 @@
 import time
 import ctypes
-from typing import Tuple, Optional, Union, List, Any
+from typing import Tuple, Optional, Union, Any
 from threading import Thread, Event, Lock, current_thread
 import comtypes
 import numpy as np
 import logging
-from rapidshot.util.logging import get_logger
 from rapidshot.memory_pool import (
     NumpyMemoryPool,
     CupyMemoryPool,
@@ -1114,7 +1113,7 @@ class ScreenCapture:
             )
         else:
             logger.info(
-                f"ScreenCapture continuous mode stopped. No frames captured or capture time was zero."
+                "ScreenCapture continuous mode stopped. No frames captured or capture time was zero."
             )
 
     def _rebuild_frame_buffer(self, region: Tuple[int, int, int, int]):

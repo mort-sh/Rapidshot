@@ -1,8 +1,6 @@
 import ctypes
 import numpy as np
 import logging
-from rapidshot.util.logging import get_logger
-from numpy import rot90, ndarray, newaxis, uint8
 from rapidshot.processor.base import ProcessorBackends
 from rapidshot.util.ctypes_helpers import pointer_to_address
 

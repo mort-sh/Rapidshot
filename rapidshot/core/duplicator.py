@@ -1,9 +1,7 @@
 import ctypes
 import logging
-from rapidshot.util.logging import get_logger
-from time import sleep
 from dataclasses import dataclass, field, InitVar
-from typing import Tuple, Optional, Union
+from typing import Tuple, Union
 from rapidshot._libs.d3d11 import *
 from rapidshot._libs.dxgi import (
     DXGI_ERROR_ACCESS_LOST,
@@ -28,8 +26,7 @@ from rapidshot.util.errors import (
     RapidShotDXGIError,
     RapidShotReinitError,
     RapidShotDeviceError,
-    RapidShotConfigError,
-    RapidShotTimeoutError,  # Though timeout is handled locally, good to have if needed
+    RapidShotConfigError,  # Though timeout is handled locally, good to have if needed
 )
 from rapidshot.util.ctypes_helpers import release_com_ptr
 

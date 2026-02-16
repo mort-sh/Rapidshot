@@ -1,7 +1,6 @@
 import ctypes
 import platform
 import logging  # Added missing import
-from rapidshot.util.logging import get_logger
 import warnings
 import sys
 from rapidshot.processor.base import ProcessorBackends

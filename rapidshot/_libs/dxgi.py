@@ -2,7 +2,7 @@ import ctypes
 import ctypes.wintypes as wintypes
 import comtypes
 import logging
-from .d3d11 import ID3D11Device, ID3D11Texture2D
+from .d3d11 import ID3D11Device
 
 # Set up logger
 logger = logging.getLogger("rapidshot._libs.dxgi")

@@ -10,7 +10,6 @@ Press the hotkeys during execution to trigger the respective actions.
 """
 
 import logging
-import time
 from collections import deque
 from threading import Event, Lock
 import re

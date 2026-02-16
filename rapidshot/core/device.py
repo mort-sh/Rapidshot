@@ -2,7 +2,7 @@ import ctypes
 import logging
 import sys
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List
 import comtypes
 from rapidshot._libs.d3d11 import *
 from rapidshot._libs.dxgi import *

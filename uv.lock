@@ -2222,6 +2222,7 @@ dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
     { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "rich" },
+    { name = "ruff" },
     { name = "typer", version = "0.20.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "typer", version = "0.23.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
 ]
@@ -2319,6 +2320,7 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'pil'", specifier = ">=10.0.0" },
     { name = "pynput", marker = "extra == 'examples'", specifier = ">=1.7.7" },
     { name = "rich", specifier = ">=13.7.1" },
+    { name = "ruff", specifier = ">=0.15.1" },
     { name = "typed-d3dshot", extras = ["numpy"], marker = "extra == 'benchmarks'", specifier = ">=1.0.1" },
     { name = "typer", specifier = ">=0.12.3" },
 ]

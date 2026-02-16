@@ -3,7 +3,7 @@ import rapidshot
 
 # Setup capture region
 region = (0, 0, 100, 100)
-print(f"Starting benchmark test")
+print("Starting benchmark test")
 print(f"Region: {region}")
 
 # Benchmark code
@@ -33,7 +33,7 @@ while fps < max_frames:
 end_time = time.perf_counter() - start_time
 fps_rate = fps / end_time
 
-print(f"\nResults:")
+print("\nResults:")
 print(f"- Total frames: {fps}")
 print(f"- Time elapsed: {end_time:.2f} seconds")
 print(f"- Average FPS: {fps_rate:.2f}")

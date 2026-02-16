@@ -36,7 +36,7 @@ try:
 except ImportError as exc:
     enum_dxgi_adapters = get_output_metadata = None
     _io_import_error = exc
-from rapidshot.util.logging import setup_logging, get_logger
+from rapidshot.util.logging import setup_logging
 
 # Initialize logging
 logger = get_logger("init")
